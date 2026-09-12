@@ -1917,15 +1917,11 @@
     merged.filters.labelMode = merged.filters.labelMode === "plain" ? "plain" : "all";
     if (![
       "default",
-      "classic",
       "native-kit",
       "minimal",
-      "editorial",
       "ugc-editorial",
       "ugc-community",
-      "compact-commerce",
-      "lead-summary",
-      "shoppable",
+      "bazaar",
     ].includes(merged.appearance.preset)) {
       merged.appearance.preset = "default";
     }
@@ -2076,10 +2072,7 @@
     root.classList.toggle("rw-preset-minimal", config.appearance?.preset === "minimal");
     root.classList.toggle("rw-preset-ugc-editorial", config.appearance?.preset === "ugc-editorial");
     root.classList.toggle("rw-preset-ugc-community", config.appearance?.preset === "ugc-community");
-    root.classList.toggle("rw-preset-editorial", config.appearance?.preset === "editorial");
-    root.classList.toggle("rw-preset-lead-summary", config.appearance?.preset === "lead-summary");
-    root.classList.toggle("rw-preset-shoppable", config.appearance?.preset === "shoppable");
-    root.classList.toggle("rw-preset-classic", config.appearance?.preset === "classic");
+    root.classList.toggle("rw-preset-bazaar", config.appearance?.preset === "bazaar");
     root.classList.toggle("rw-density-compact", config.typography.density === "compact");
     root.classList.toggle("rw-layout-grid", config.layout.mode === "grid");
     root.classList.toggle("rw-layout-carousel", config.layout.mode === "carousel");

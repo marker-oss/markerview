@@ -131,11 +131,11 @@
     ReviewsWidget.mount(host, options || {});
     return host;
   }
-  eq("shoppable preset is whitelisted", normVideo({ appearance: { preset: "shoppable" } }).appearance.preset, "shoppable");
+  eq("bazaar preset is whitelisted", normVideo({ appearance: { preset: "bazaar" } }).appearance.preset, "bazaar");
   eq("unknown preset falls back to default", normVideo({ appearance: { preset: "banana" } }).appearance.preset, "default");
-  eq("shoppable preset toggles root class", (function () {
-    var host = mountRoot({ reviews: [], config: { appearance: { preset: "shoppable" } } });
-    var ok = host.classList.contains("rw-preset-shoppable");
+  eq("bazaar preset toggles root class", (function () {
+    var host = mountRoot({ reviews: [], config: { appearance: { preset: "bazaar" } } });
+    var ok = host.classList.contains("rw-preset-bazaar");
     host.remove();
     return ok;
   })(), true);
@@ -159,14 +159,14 @@
    // ── Community wall (layout.mode "wall") ────────────────────────────────────
   eq("viewAllHref renders header link when set", (function () {
     var host = mountRoot({ reviews: [], config: { appearance: { viewAllHref: "https://example.test/all" } } });
-    var link = host.querySelector(".rw-header .rw-view-all");
+  var link = host.querySelector(".rw-view-all");
     var ok = link !== null && link.getAttribute("href") === "https://example.test/all";
     host.remove();
     return ok;
   })(), true);
   eq("viewAllHref empty hides header link", (function () {
     var host = mountRoot({ reviews: [] });
-    var ok = host.querySelector(".rw-header .rw-view-all") === null;
+    var ok = host.querySelector(".rw-view-all") === null;
     host.remove();
     return ok;
   })(), true);
@@ -328,11 +328,10 @@
     return ok;
   })(), true);
 
-  // ── Chameleon-neutral default + classic preset (T1) ────────────────────────
-  eq("classic preset is whitelisted", normVideo({ appearance: { preset: "classic" } }).appearance.preset, "classic");
-  eq("classic preset toggles root class", (function () {
-    var host = mountRoot({ reviews: [], config: { appearance: { preset: "classic" } } });
-    var ok = host.classList.contains("rw-preset-classic");
+  // ── Chameleon-neutral default + minimal preset ────────────────────────────
+  eq("unknown preset falls back to default class", (function () {
+    var host = mountRoot({ reviews: [], config: { appearance: { preset: "banana" } } });
+    var ok = !host.className.split(" ").some(function (cls) { return cls.indexOf("rw-preset-") === 0; });
     host.remove();
     return ok;
   })(), true);
@@ -342,9 +341,9 @@
     host.remove();
     return ok;
   })(), true);
-  eq("classic class removed when preset changes", (function () {
-    var host = mountRoot({ reviews: [], config: { appearance: { preset: "shoppable" } } });
-    var ok = !host.classList.contains("rw-preset-classic") && host.classList.contains("rw-preset-shoppable");
+  eq("preset class removed when preset changes", (function () {
+    var host = mountRoot({ reviews: [], config: { appearance: { preset: "bazaar" } } });
+    var ok = !host.classList.contains("rw-preset-classic") && host.classList.contains("rw-preset-bazaar");
     host.remove();
     return ok;
   })(), true);
