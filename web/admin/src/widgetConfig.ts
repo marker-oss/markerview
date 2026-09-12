@@ -6,7 +6,36 @@ export type MarketplacePolicy = {
   showSourceLinks: boolean
 }
 
-export type WidgetAppearancePreset = 'default' | 'native-kit' | 'minimal' | 'editorial' | 'ugc-editorial' | 'ugc-community' | 'compact-commerce' | 'lead-summary'
+export type WidgetSectionId = 'summary' | 'media' | 'filters' | 'list' | 'form'
+
+export const widgetSectionLabels: Record<WidgetSectionId, string> = {
+  summary: 'Сводка (оценка и распределение)',
+  media: 'Лента фото и видео',
+  filters: 'Панель фильтров',
+  list: 'Список отзывов',
+  form: 'Форма отзыва',
+}
+
+export type WidgetAppearancePreset = 'default' | 'native-kit' | 'minimal' | 'ugc-editorial' | 'ugc-community' | 'bazaar'
+
+export type WidgetPresetInfo = {
+  id: WidgetAppearancePreset
+  name: string
+  hint: string
+  color: string
+  tiles: boolean
+}
+
+// Catalog for the editor preset gallery: every id is a real rw-preset-* class
+// in reviews-widget.css — the widget renders these without extra work.
+export const widgetPresets: WidgetPresetInfo[] = [
+  { id: 'default', name: 'Классика', hint: 'список · фиолетовый акцент', color: '#68478D', tiles: false },
+  { id: 'native-kit', name: 'Нативный', hint: 'бесцветный · подхватывает сайт', color: '#17191D', tiles: false },
+  { id: 'minimal', name: 'Минимал', hint: 'ч/б · тонкие линии', color: '#17191D', tiles: true },
+  { id: 'ugc-editorial', name: 'UGC Редакция', hint: 'фото вперёд · терракота', color: '#B4532A', tiles: true },
+  { id: 'ugc-community', name: 'UGC Комьюнити', hint: 'стена фото · тёплый', color: '#0E7A6E', tiles: true },
+  { id: 'bazaar', name: 'Базар', hint: 'плотная стена · компактно', color: '#C2410C', tiles: true },
+]
 
 export type CustomFieldDef = {
   id: string
@@ -40,11 +69,37 @@ export type WidgetConfig = {
     radius: number
     density: 'comfortable' | 'compact'
   }
+  header: {
+    title: string
+    layout: 'row' | 'stack' | 'center'
+  }
+  answers: {
+    style: 'card' | 'plain' | 'bubble' | 'accent'
+    color: string
+    title: string
+    showTitle: boolean
+  }
+  viewer: {
+    chrome: 'full' | 'min'
+    showOriginal: boolean
+    showCounter: boolean
+  }
+  filters: {
+    layout: 'rows' | 'dropdowns' | 'chips'
+    collapsible: boolean
+    multiSelect: boolean
+    labelMode: 'all' | 'plain'
+  }
+  labels: {
+    writeReview: string
+    readMore: string
+  }
   layout: {
     mode: 'list' | 'grid' | 'carousel' | 'video' | 'wall'
     columns: number
     pageSize: number
     pagination: 'more' | 'pages'
+    sections: WidgetSectionId[]
     video: {
       aspect: '3:4' | '9:16' | '1:1'
       tileWidth: number
@@ -58,9 +113,6 @@ export type WidgetConfig = {
       gap: number
       maxTiles: number
     }
-  }
-  header: {
-    title: string
   }
   visibility: {
     photos: boolean
@@ -115,6 +167,7 @@ export const defaultWidgetConfig: WidgetConfig = {
     mode: 'list',
     columns: 2,
     pageSize: 3,
+    sections: ['summary', 'media', 'filters', 'list', 'form'],
     pagination: 'more',
     video: {
       aspect: '9:16',
@@ -132,6 +185,28 @@ export const defaultWidgetConfig: WidgetConfig = {
   },
   header: {
     title: 'Отзывы покупателей',
+    layout: 'row',
+  },
+  answers: {
+    style: 'card',
+    color: '#4E7C59',
+    title: '',
+    showTitle: true,
+  },
+  viewer: {
+    chrome: 'full',
+    showOriginal: true,
+    showCounter: true,
+  },
+  filters: {
+    layout: 'rows',
+    collapsible: false,
+    multiSelect: false,
+    labelMode: 'all',
+  },
+  labels: {
+    writeReview: '',
+    readMore: '',
   },
   visibility: {
     photos: true,
@@ -203,19 +278,49 @@ export function mergeWidgetConfig(value: Partial<WidgetConfig>): WidgetConfig {
     appearance: { ...defaultWidgetConfig.appearance, ...(value.appearance ?? {}) },
     theme: { ...defaultWidgetConfig.theme, ...(value.theme ?? {}) },
     typography: { ...defaultWidgetConfig.typography, ...(value.typography ?? {}) },
+    header: { ...defaultWidgetConfig.header, ...(value.header ?? {}) },
+    answers: { ...defaultWidgetConfig.answers, ...(value.answers ?? {}) },
+    viewer: { ...defaultWidgetConfig.viewer, ...(value.viewer ?? {}) },
+    filters: { ...defaultWidgetConfig.filters, ...(value.filters ?? {}) },
+    labels: { ...defaultWidgetConfig.labels, ...(value.labels ?? {}) },
     layout: {
       ...defaultWidgetConfig.layout,
       ...(value.layout ?? {}),
+      sections: normalizeSections(value.layout?.sections, value.visibility),
       video: { ...defaultWidgetConfig.layout.video, ...(value.layout?.video ?? {}) },
       wall: { ...defaultWidgetConfig.layout.wall, ...(value.layout?.wall ?? {}) },
     },
-    header: { ...defaultWidgetConfig.header, ...(value.header ?? {}) },
     visibility: { ...defaultWidgetConfig.visibility, ...(value.visibility ?? {}) },
     defaults: { ...defaultWidgetConfig.defaults, ...(value.defaults ?? {}) },
     customFields: normalizeCustomFields(value.customFields),
     marketplacePolicy: mergeMarketplacePolicy(value.marketplacePolicy),
     ranking: value.ranking?.length ? value.ranking : defaultWidgetConfig.ranking,
   }
+}
+
+function normalizeSections(
+  raw: WidgetSectionId[] | undefined,
+  legacyVisibility: Partial<WidgetConfig['visibility']> | undefined,
+): WidgetSectionId[] {
+  // Migration: configs published before `sections` existed gate blocks through
+  // the flat visibility flags. Map them onto the section order.
+  const legacy: Partial<Record<WidgetSectionId, true>> = {}
+  if (legacyVisibility) {
+    if (legacyVisibility.ratingDistribution === false) legacy.summary = true
+    if (legacyVisibility.photos === false) legacy.media = true
+    if (legacyVisibility.filters === false) legacy.filters = true
+  }
+  const out: WidgetSectionId[] = []
+  const seen: Partial<Record<WidgetSectionId, true>> = {}
+  for (const id of raw ?? defaultWidgetConfig.layout.sections) {
+    if (!widgetSectionLabels[id] || seen[id]) continue
+    if (legacy[id]) continue
+    seen[id] = true
+    out.push(id)
+  }
+  // The list is the point of the widget — always render it.
+  if (!seen.list) out.push('list')
+  return out
 }
 
 function mergeMarketplacePolicy(value: Partial<WidgetConfig['marketplacePolicy']> | undefined): WidgetConfig['marketplacePolicy'] {

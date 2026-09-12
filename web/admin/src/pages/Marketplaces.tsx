@@ -4,7 +4,7 @@ import { toast } from '../toast'
 import type { MarketplaceStatus, SyncDispatch } from '../types'
 
 const fieldLabels: Record<string, Record<string, string>> = {
-  wb: { token: 'Персональный WB API-токен' },
+  wb: { token: 'WB API-токен' },
   ym: {
     api_key: 'API key',
     oauth_token: 'OAuth token',
@@ -16,6 +16,9 @@ const fieldLabels: Record<string, Record<string, string>> = {
     api_key: 'API key',
   },
 }
+
+const mpNames: Record<string, string> = { wb: 'Wildberries', ym: 'Яндекс Маркет', ozon: 'Ozon' }
+const mpColors: Record<string, string> = { wb: '#B137E5', ym: '#FC3F1D', ozon: '#005BFF' }
 
 const defaultPublish: Record<string, boolean> = { wb: true, ym: true, ozon: false }
 
@@ -34,7 +37,7 @@ function catalogStatusText(status: CatalogStatus | null): string {
     case 'running':
       return status.total > 0
         ? `Обновление каталога: ${status.crawled} из ${status.total} новых товаров…`
-        : 'Обновление каталога: читаем sitemap…'
+        : 'Обновление каталога: читаем карту сайта…'
     case 'done':
       return `Каталог обновлён: товаров ${status.products}, артикулов с отзывами ${status.articles}`
     case 'error':
@@ -156,88 +159,126 @@ export default function Marketplaces() {
   }
 
   return (
-    <section className="stack">
-      <div className="toolbar">
-        <button onClick={() => sync()} disabled={busy !== ''}>
-          Синхронизировать всё
-        </button>
-        <button
-          className="secondary"
-          onClick={() => refreshCatalog()}
-          disabled={busy !== '' || catalog?.state === 'running'}
-          title="Перечитать sitemap магазина и добавить в каталог новые товары (уже известные не перечитываются)"
-        >
-          Обновить каталог товаров
-        </button>
-        <button
-          className="secondary"
-          onClick={() => refreshCatalog(true)}
-          disabled={busy !== '' || catalog?.state === 'running'}
-          title="Заново обойти все страницы товаров — долго, нужно только если поменялись артикулы или названия"
-        >
-          Пересканировать полностью
-        </button>
-        {catalogStatusText(catalog) && <p className="muted">{catalogStatusText(catalog)}</p>}
-      </div>
-      <section className="panel">
-        <div className="table">
-          <div className="table-head grid-marketplaces">
-            <span>Маркетплейс</span>
-            <span>Включён</span>
-            <span>Доступы</span>
-            <span></span>
-          </div>
-          {items.map((item) => {
-            const labels = fieldLabels[item.id] ?? {}
-            return (
-              <div className="table-row grid-marketplaces" key={item.id}>
-                <strong>{item.id}</strong>
-                <label className="inline-check">
-                  <input type="checkbox" checked={item.enabled} onChange={(e) => save(item, e.target.checked)} disabled={busy !== ''} />
-                  <span className={item.enabled ? 'status-ok' : 'status-muted'}>{item.enabled ? 'да' : 'нет'}</span>
-                </label>
-                <span className={item.configured ? 'status-ok' : 'status-warn'}>
-                  {item.configured ? 'настроены' : 'нет'}
-                </span>
-                {item.warning && <p className="status-warn">{item.warning}</p>}
-                <button className="secondary" onClick={() => sync(item.id)} disabled={busy !== '' || !item.enabled || !item.configured}>
-                  Запуск
-                </button>
-                <div className="credential-grid">
-                  {Object.entries(labels).map(([key, label]) => (
-                    <label key={key}>
-                      <span>{label}</span>
-                      <input
-                        value={drafts[item.id]?.[key] ?? ''}
-                        onChange={(e) => setDraft(item.id, key, e.target.value)}
-                        placeholder={item.fields?.[key] ? 'уже задан' : 'не задан'}
-                        type={key.includes('token') || key.includes('key') ? 'password' : 'text'}
-                      />
-                      {item.id === 'wb' && key === 'token' && (
-                        <span className="status-muted">
-                          Создайте персональный токен WB с категорией «Отзывы и вопросы». Базовый, тестовый и сервисный токены не поддерживаются.
-                        </span>
-                      )}
-                    </label>
-                  ))}
-                  <button className="secondary" onClick={() => save(item)} disabled={busy !== ''}>
-                    Сохранить
-                  </button>
-                </div>
-                <label className="inline-check">
-                  <input
-                    type="checkbox"
-                    checked={publish[item.id] ?? defaultPublish[item.id] ?? false}
-                    onChange={(e) => togglePublish(item.id, e.target.checked)}
-                    disabled={busy !== ''}
-                  />
-                  <span>Публиковать ответы на МП</span>
-                </label>
-              </div>
-            )
-          })}
+    <section>
+      <div className="pagehead">
+        <div>
+          <h1>Маркетплейсы</h1>
+          <p className="sub">Доступы, синхронизация и публикация ответов</p>
         </div>
-      </section>
+        <div className="actions">
+          <button className="secondary" onClick={() => refreshCatalog()} disabled={busy !== '' || catalog?.state === 'running'} title="Перечитать карту сайта и добавить новые товары">
+            Обновить каталог
+          </button>
+          <button className="secondary" onClick={() => refreshCatalog(true)} disabled={busy !== '' || catalog?.state === 'running'} title="Заново обойти все страницы товаров — долго">
+            Пересканировать
+          </button>
+          <button onClick={() => sync()} disabled={busy !== ''}>
+            Синхронизировать всё
+          </button>
+        </div>
+      </div>
+
+      {catalogStatusText(catalog) && <p className="hint" style={{ marginBottom: 14 }}>{catalogStatusText(catalog)}</p>}
+
+      <div className="stack">
+        {items.map((item) => {
+          const labels = fieldLabels[item.id] ?? {}
+          const name = mpNames[item.id] ?? item.id
+          return (
+            <div className="card" key={item.id}>
+              <div className="row" style={{ flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
+                <span className="who" style={{ minWidth: 170 }}>
+                  <span className="av" style={{ borderRadius: 10, width: 38, height: 38, background: mpColors[item.id] ?? 'var(--sunken)', color: '#fff', fontSize: 10 }}>
+                    {item.id.toUpperCase()}
+                  </span>
+                  <span>
+                    <b>{name}</b>
+                    <span>
+                      {item.configured ? 'доступы настроены' : 'доступы не заданы'}
+                    </span>
+                  </span>
+                </span>
+                {item.configured ? (
+                  <span className="bag bag-ok">готов к синхронизации</span>
+                ) : (
+                  <span className="bag bag-warn">не настроен</span>
+                )}
+                {item.warning && <span className="bag bag-err">{item.warning}</span>}
+                <span className="tgl-row" style={{ marginLeft: 'auto' }}>
+                  <button
+                    className={`tgl${item.enabled ? '' : ''}`}
+                    aria-pressed={item.enabled}
+                    onClick={() => save(item, !item.enabled)}
+                    disabled={busy !== ''}
+                    aria-label={item.enabled ? 'Выключить' : 'Включить'}
+                  />
+                  <b>{item.enabled ? 'включён' : 'выключен'}</b>
+                </span>
+              </div>
+              <div className="row" style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(Object.keys(labels).length + 1, 4)}, minmax(150px, 1fr))`, gap: 10, alignItems: 'end' }}>
+                {Object.entries(labels).map(([key, label]) => (
+                  <label className="fld" key={key}>
+                    <span>{label}</span>
+                    <input
+                      value={drafts[item.id]?.[key] ?? ''}
+                      onChange={(e) => setDraft(item.id, key, e.target.value)}
+                      placeholder={item.fields?.[key] ? 'уже задан' : 'не задан'}
+                      type={key.includes('token') || key.includes('key') ? 'password' : 'text'}
+                    />
+                    {item.id === 'wb' && key === 'token' && (
+                      <i className="hint">Токен WB категории «Отзывы и вопросы».</i>
+                    )}
+                  </label>
+                ))}
+                <button className="secondary" onClick={() => save(item)} disabled={busy !== ''}>
+                  Сохранить доступы
+                </button>
+                <button className="secondary sm" onClick={() => sync(item.id)} disabled={busy !== '' || !item.enabled || !item.configured}>
+                  Синхронизировать
+                </button>
+              </div>
+              <div className="row">
+                <span className="k">Публиковать ответы на МП</span>
+                <span className="tgl-row" style={{ marginLeft: 'auto' }}>
+                  <button
+                    className="tgl"
+                    aria-pressed={publish[item.id] ?? defaultPublish[item.id] ?? false}
+                    onClick={(e) => togglePublish(item.id, e.currentTarget.getAttribute('aria-pressed') !== 'true')}
+                    disabled={busy !== ''}
+                    aria-label="Публиковать ответы"
+                  />
+                  <b>{(publish[item.id] ?? defaultPublish[item.id] ?? false) ? 'да' : 'нет'}</b>
+                </span>
+              </div>
+            </div>
+          )
+        })}
+        {items.length === 0 && (
+          <div className="empty">
+            <b>Маркетплейсы недоступны</b>
+            <p>Список площадок появится после загрузки.</p>
+          </div>
+        )}
+      </div>
+
+      <div className="sec-t">Каталог товаров</div>
+      <div className="grid g3">
+        <div className="card" style={{ padding: 16, display: 'grid', gap: 8 }}>
+          <b style={{ fontSize: 13.5 }}>Последний обход</b>
+          <span className="hint">
+            {catalog?.state === 'done' ? `товаров ${catalog.products}, артикулов ${catalog.articles}` : 'по карте сайта'}
+          </span>
+        </div>
+        <div className="card" style={{ padding: 16, display: 'grid', gap: 8 }}>
+          <b style={{ fontSize: 13.5 }}>Автообновление</b>
+          <span className="hint">раз в сутки · без участия оператора</span>
+          <span className="bag bag-ok" style={{ justifySelf: 'start' }}>Работает</span>
+        </div>
+        <div className="card" style={{ padding: 16, display: 'grid', gap: 8 }}>
+          <b style={{ fontSize: 13.5 }}>Состояние каталога</b>
+          <span className="hint">{catalogStatusText(catalog) || 'ожидание запуска'}</span>
+        </div>
+      </div>
     </section>
   )
 }

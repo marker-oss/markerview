@@ -13,13 +13,14 @@ function sourceLabel(value: string) {
   if (value === 'site') return 'Сайт'
   if (value === 'wb') return 'Wildberries'
   if (value === 'ozon') return 'Ozon'
+  if (value === 'ym') return 'Яндекс Маркет'
   return value
 }
 
-export default function Questions() {
+export default function QuestionsPanel() {
   const [data, setData] = useState<ListResponse>({ questions: [] })
   const [marketplace, setMarketplace] = useState('')
-  const [status, setStatus] = useState('')
+  const [status, setStatus] = useState('pending')
   const [offset, setOffset] = useState(0)
   const [answerDrafts, setAnswerDrafts] = useState<Record<number, string>>({})
 
@@ -70,23 +71,26 @@ export default function Questions() {
   const hasNext = offset + PAGE_SIZE < total
 
   return (
-    <section className="stack">
-      <div className="toolbar">
-        <select value={marketplace} onChange={(e) => resetTo(setMarketplace)(e.target.value)}>
-          <option value="">Все источники</option>
+    <section>
+      <div className="card fbar">
+        <select value={marketplace} onChange={(e) => resetTo(setMarketplace)(e.target.value)} style={{ maxWidth: 180 }}>
+          <option value="">Все площадки</option>
           <option value="site">Сайт</option>
           <option value="wb">Wildberries</option>
           <option value="ozon">Ozon</option>
+          <option value="ym">Яндекс Маркет</option>
         </select>
-        <select value={status} onChange={(e) => resetTo(setStatus)(e.target.value)}>
+        <select value={status} onChange={(e) => resetTo(setStatus)(e.target.value)} style={{ maxWidth: 190 }}>
+          <option value="pending">Ожидают ответа</option>
           <option value="">Все статусы</option>
           <option value="imported">Импортированные</option>
           <option value="answered">Отвеченные</option>
-          <option value="pending">Ожидают ответа</option>
         </select>
-        <span className="muted">Вопросов: {total}</span>
+        <span className="count">
+          <b>{total}</b> вопросов на странице
+        </span>
       </div>
-      <section className="panel">
+      <div className="card">
         <div className="table">
           <div className="table-head grid-questions">
             <span>Вопрос</span>
@@ -96,17 +100,28 @@ export default function Questions() {
           {data.questions.map((q) => (
             <div className="table-row grid-questions" key={q.id}>
               <div>
-                <strong>{q.authorName || sourceLabel(q.marketplace)}</strong>
-                <p>{q.text}</p>
-                <small>
+                <div className="who">
+                  <span className="av">{(q.authorName || q.marketplace).slice(0, 1).toUpperCase()}</span>
+                  <span>
+                    <b>{q.authorName || sourceLabel(q.marketplace)}</b>
+                    <span>{new Date(q.createdAt).toLocaleDateString('ru-RU')}</span>
+                  </span>
+                </div>
+                <p style={{ margin: '6px 0 0' }}>{q.text}</p>
+                <small className="muted">
                   {sourceLabel(q.marketplace)}
                   {q.sellerArticle ? ` · ${q.sellerArticle}` : ''}
-                  {' · '}
-                  {new Date(q.createdAt).toLocaleDateString('ru-RU')}
                 </small>
               </div>
-              <span className={q.status === 'answered' ? 'status-ok' : 'status-muted'}>
-                {q.status === 'answered' ? 'отвечен' : q.status === 'pending' ? 'ожидает' : 'импортирован'}
+              <span>
+                <span className={`bag ${q.status === 'answered' ? 'bag-ok' : q.status === 'pending' ? 'bag-warn' : 'bag-neutral'}`}>
+                  {q.status === 'answered' ? 'отвечен' : q.status === 'pending' ? 'ждёт ответа' : 'импортирован'}
+                </span>
+                {q.answerPublish?.state === 'failed' && (
+                  <div style={{ marginTop: 6 }}>
+                    <span className="bag bag-err">Ошибка публикации</span>
+                  </div>
+                )}
               </span>
               <div className="reply-editor">
                 <textarea
@@ -115,41 +130,50 @@ export default function Questions() {
                   placeholder="Ответ на вопрос"
                   rows={2}
                 />
-                <button className="secondary" onClick={() => saveAnswer(q.id)}>
-                  Ответить
-                </button>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <button className="secondary" onClick={() => saveAnswer(q.id)}>
+                    Ответить
+                  </button>
+                  {q.answerPublish?.state === 'failed' && (
+                    <button className="quiet sm" onClick={() => retryPublish(q.id)}>
+                      Повторить
+                    </button>
+                  )}
+                </div>
                 {q.answerPublish && (
                   <div className="reply-publish">
                     {q.answerPublish.state === 'published' && <span className="status-ok">Опубликовано на МП</span>}
                     {q.answerPublish.state === 'pending' && <span className="status-muted">Публикация…</span>}
                     {q.answerPublish.state === 'unsupported' && <span className="status-muted">Публикация на МП недоступна</span>}
                     {q.answerPublish.state === 'failed' && (
-                      <>
-                        <span className="status-warn">Ошибка публикации: {q.answerPublish.error}</span>
-                        <button className="secondary" onClick={() => retryPublish(q.id)}>Повторить</button>
-                      </>
+                      <span className="status-warn">{q.answerPublish.error}</span>
                     )}
                   </div>
                 )}
               </div>
             </div>
           ))}
-          {data.questions.length === 0 && <p className="muted empty">Вопросов нет.</p>}
+          {data.questions.length === 0 && (
+            <div className="empty" style={{ gridColumn: '1 / -1', margin: 12 }}>
+              <b>Таких вопросов нет</b>
+              <p>Смените фильтр или подключите площадку, которая поддерживает вопросы.</p>
+            </div>
+          )}
         </div>
-      </section>
-      {total > PAGE_SIZE && (
-        <div className="toolbar pager">
-          <button className="secondary" disabled={!hasPrev} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}>
-            ← Назад
-          </button>
-          <span className="muted">
-            {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} из {total}
-          </span>
-          <button className="secondary" disabled={!hasNext} onClick={() => setOffset(offset + PAGE_SIZE)}>
-            Вперёд →
-          </button>
-        </div>
-      )}
+        {total > PAGE_SIZE && (
+          <div className="pager">
+            <button disabled={!hasPrev} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}>
+              ‹
+            </button>
+            <span className="cur">
+              {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} из {total}
+            </span>
+            <button disabled={!hasNext} onClick={() => setOffset(offset + PAGE_SIZE)}>
+              ›
+            </button>
+          </div>
+        )}
+      </div>
     </section>
   )
 }

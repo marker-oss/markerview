@@ -31,6 +31,7 @@
       mode: "list",
       columns: 2,
       pageSize: 3,
+      sections: ["summary", "media", "filters", "list", "form"],
       pagination: "more",
       wall: {
         minTileWidth: 200,
@@ -49,6 +50,24 @@
     },
     header: {
       title: "Отзывы покупателей",
+      layout: "row",
+    },
+    answers: {
+      style: "card",
+      color: "#4E7C59",
+      title: "",
+      showTitle: true,
+    },
+    viewer: {
+      chrome: "full",
+      showOriginal: true,
+      showCounter: true,
+    },
+    filters: {
+      layout: "rows",
+      collapsible: false,
+      multiSelect: false,
+      labelMode: "all",
     },
     visibility: {
       photos: true,
@@ -319,6 +338,7 @@
     const fragment = document.createDocumentFragment();
     const header = document.createElement("div");
     header.className = "rw-header";
+    header.setAttribute("data-section", "header");
     const showQuestions = !config || config.visibility.questions !== false;
     const labels = config.labels || {};
     header.innerHTML = `
@@ -327,58 +347,69 @@
         ${showQuestions ? `<button class="rw-tab" type="button" data-role="tab-questions">Вопросы <sup data-role="question-count">0</sup></button>` : ""}
         <button class="rw-write-cta" type="button" data-role="write-cta" hidden>${escapeHTML(labels.writeReview || "Написать отзыв")}</button>
       </div>
-      <div class="rw-overview">
-        <div class="rw-score">
-          <div class="rw-score-value" data-role="score">0.0</div>
-          <div class="rw-score-meta">
-            <div class="rw-stars" data-role="stars" aria-label="Средний рейтинг"></div>
-            <div class="rw-summary" data-role="summary"></div>
-          </div>
-        </div>
-        <div class="rw-distribution" aria-label="Сводка отзывов">
-          <h2 class="rw-dist-title">${escapeHTML(productName)}</h2>
-          <div class="rw-dist-list" data-role="distribution"></div>
-          <div class="rw-market-counts" data-role="market-counts"></div>
+    `;
+
+    const overview = document.createElement("div");
+    overview.className = "rw-overview";
+    overview.setAttribute("data-section", "summary");
+    overview.innerHTML = `
+      <div class="rw-score">
+        <div class="rw-score-value" data-role="score">0.0</div>
+        <div class="rw-score-meta">
+          <div class="rw-stars" data-role="stars" aria-label="Средний рейтинг"></div>
+          <div class="rw-summary" data-role="summary"></div>
         </div>
       </div>
-      ${config.appearance.viewAllHref ? `<div class="rw-view-all-row"><a class="rw-view-all" href="${escapeAttribute(config.appearance.viewAllHref)}" target="_blank" rel="noreferrer">${escapeHTML(labels.viewAll || "Смотреть все")}</a></div>` : ""}
-      <div class="rw-media-strip" data-role="media-strip"></div>
-      <div class="rw-filter-bar">
-        <div class="rw-controls">
-          <input class="rw-search" type="search" data-role="search" aria-label="Поиск по отзывам" placeholder="${escapeAttribute(labels.search || "Поиск по отзывам")}" />
-          <div class="rw-segments" data-role="quick-filters" aria-label="Быстрые фильтры"></div>
-          <div class="rw-segments" data-role="marketplaces" aria-label="Маркетплейс"></div>
-          <div class="rw-segments" data-role="ratings" aria-label="Рейтинг"></div>
-          <div class="rw-segments" data-role="custom-filters" aria-label="Атрибуты отзывов"></div>
-        </div>
-        <div class="rw-select-row">
-          <select class="rw-sort" data-role="sort" aria-label="Сортировка">
-            <option value="newest">Сначала новые</option>
-            <option value="relevance">Релевантные</option>
-            <option value="highest">Сначала высокая оценка</option>
-            <option value="lowest">Сначала низкая оценка</option>
-            <option value="media">Сначала с медиа</option>
-          </select>
-        </div>
+      <div class="rw-distribution" aria-label="Сводка отзывов">
+        <h2 class="rw-dist-title">${escapeHTML(productName)}</h2>
+        <div class="rw-dist-list" data-role="distribution"></div>
+        <div class="rw-market-counts" data-role="market-counts"></div>
+      </div>
+    `;
+    if (config.appearance.viewAllHref) {
+      const viewAll = document.createElement("div");
+      viewAll.className = "rw-view-all-row";
+      viewAll.innerHTML = `<a class="rw-view-all" href="${escapeAttribute(config.appearance.viewAllHref)}" target="_blank" rel="noreferrer">${escapeHTML(labels.viewAll || "Смотреть все")}</a>`;
+      overview.appendChild(viewAll);
+    }
+
+    const media = document.createElement("div");
+    media.className = "rw-media-strip";
+    media.setAttribute("data-role", "media-strip");
+    media.setAttribute("data-section", "media");
+
+    const filterBar = document.createElement("div");
+    filterBar.className = "rw-filter-bar";
+    filterBar.setAttribute("data-section", "filters");
+    filterBar.innerHTML = `
+      <div class="rw-controls">
+        <input class="rw-search" type="search" data-role="search" aria-label="Поиск по отзывам" placeholder="${escapeAttribute(labels.search || "Поиск по отзывам")}" />
+        <div class="rw-segments" data-role="quick-filters" aria-label="Быстрые фильтры"></div>
+        <div class="rw-segments" data-role="marketplaces" aria-label="Маркетплейс"></div>
+        <div class="rw-segments" data-role="ratings" aria-label="Рейтинг"></div>
+        <div class="rw-segments" data-role="custom-filters" aria-label="Атрибуты отзывов"></div>
+      </div>
+      <div class="rw-select-row">
+        <select class="rw-sort" data-role="sort" aria-label="Сортировка">
+          <option value="newest">Сначала новые</option>
+          <option value="relevance">Релевантные</option>
+          <option value="highest">Сначала высокая оценка</option>
+          <option value="lowest">Сначала низкая оценка</option>
+          <option value="media">Сначала с медиа</option>
+        </select>
       </div>
     `;
 
-    const body = document.createElement("div");
-    body.className = "rw-body";
-    body.innerHTML = `
-      <div class="rw-list-wrap" data-role="panel-reviews">
-        <div class="rw-wall-wrap" data-role="wall" hidden></div>
-        <div class="rw-list" data-role="list"></div>
-        <div class="rw-empty" data-role="status" hidden></div>
-        <div class="rw-footer">
-          <button class="rw-load-more" type="button" data-role="load-more">Показать ещё</button>
-        </div>
-        <div class="rw-submit" data-role="submit"></div>
-      </div>
-      <div class="rw-questions-panel" data-role="panel-questions" hidden>
-        <div class="rw-qa-list" data-role="qa-list"></div>
-        <div class="rw-empty" data-role="qa-status" hidden></div>
-        <div class="rw-qa-submit" data-role="qa-submit"></div>
+    const listWrap = document.createElement("div");
+    listWrap.className = "rw-list-wrap";
+    listWrap.setAttribute("data-role", "panel-reviews");
+    listWrap.setAttribute("data-section", "list");
+    listWrap.innerHTML = `
+      <div class="rw-wall-wrap" data-role="wall" hidden></div>
+      <div class="rw-list" data-role="list"></div>
+      <div class="rw-empty" data-role="status" hidden></div>
+      <div class="rw-footer">
+        <button class="rw-load-more" type="button" data-role="load-more">Показать ещё</button>
       </div>
     `;
 
@@ -402,7 +433,28 @@
       </div>
     `;
 
-    fragment.append(header, body, viewer);
+    const submitForm = document.createElement("div");
+    submitForm.className = "rw-submit";
+    submitForm.setAttribute("data-role", "submit");
+    submitForm.setAttribute("data-section", "form");
+
+    const questionsPanel = document.createElement("div");
+    questionsPanel.className = "rw-questions-panel";
+    questionsPanel.setAttribute("data-role", "panel-questions");
+    questionsPanel.hidden = true;
+    questionsPanel.innerHTML = `
+      <div class="rw-qa-list" data-role="qa-list"></div>
+      <div class="rw-empty" data-role="qa-status" hidden></div>
+      <div class="rw-qa-submit" data-role="qa-submit"></div>
+    `;
+
+    // Header first, then the flat section children of the root in config order.
+    fragment.appendChild(header);
+    const bySection = { summary: overview, media, filters: filterBar, list: listWrap, form: submitForm };
+    for (const id of config.layout.sections) {
+      fragment.appendChild(bySection[id]);
+    }
+    fragment.append(questionsPanel, viewer);
     return fragment;
   }
 
@@ -551,12 +603,14 @@
     });
 
     const sort = root.querySelector('[data-role="sort"]');
-    sort.value = state.sort;
-    sort.addEventListener("change", (event) => {
-      state.sort = event.target.value;
-      resetListingState(state);
-      render(root, state);
-    });
+    if (sort) {
+      sort.value = state.sort;
+      sort.addEventListener("change", (event) => {
+        state.sort = event.target.value;
+        resetListingState(state);
+        render(root, state);
+      });
+    }
 
     const search = root.querySelector('[data-role="search"]');
     if (search) {
@@ -566,17 +620,21 @@
         render(root, state);
       });
     }
-    root.querySelector('[data-role="load-more"]').addEventListener("click", () => {
-      if (state.loadingMore) {
-        return;
-      }
-      if (state.fullFeedSource && state.visible >= state.reviews.length && !state.fullFeedExhausted) {
-        loadMoreReviews(root, state);
-        return;
-      }
-      state.visible += state.config.layout.pageSize;
-      render(root, state);
-    });
+
+    const loadMoreBtn = root.querySelector('[data-role="load-more"]');
+    if (loadMoreBtn) {
+      loadMoreBtn.addEventListener("click", () => {
+        if (state.loadingMore) {
+          return;
+        }
+        if (state.fullFeedSource && state.visible >= state.reviews.length && !state.fullFeedExhausted) {
+          loadMoreReviews(root, state);
+          return;
+        }
+        state.visible += state.config.layout.pageSize;
+        render(root, state);
+      });
+    }
   }
 
   function render(root, state) {
@@ -653,41 +711,48 @@
 
     renderStatus(root, state.moreError || "Отзывов с такими фильтрами нет", filtered.length === 0 || Boolean(state.moreError));
     const loadMore = root.querySelector('[data-role="load-more"]');
-    const canLoadRemote = Boolean(state.fullFeedSource && !state.fullFeedExhausted);
-    loadMore.textContent = state.loadingMore
-      ? "Загружаем"
-      : "Показать ещё";
-    loadMore.disabled = state.loadingMore;
-    loadMore.hidden = visibleCount >= filtered.length && !canLoadRemote;
+    if (loadMore) {
+      const canLoadRemote = Boolean(state.fullFeedSource && !state.fullFeedExhausted);
+      loadMore.textContent = state.loadingMore ? "Загружаем" : "Показать ещё";
+      loadMore.disabled = state.loadingMore;
+      loadMore.hidden = visibleCount >= filtered.length && !canLoadRemote;
+    }
     renderSubmission(root, state);
   }
 
   function renderStatus(root, text, visible) {
     const status = root.querySelector('[data-role="status"]');
+    if (!status) return;
     status.textContent = text;
     status.hidden = !visible;
   }
 
   function renderSummary(root, all, filtered, state) {
+    const scoreEl = root.querySelector('[data-role="score"]');
+    if (!scoreEl) return;
     const aggregate = summaryAggregate(all, state);
     const total = aggregate.totalReviews;
     const average = aggregate.averageRating;
-    root.querySelector('[data-role="score"]').textContent = average.toFixed(1);
-    root.querySelector('[data-role="stars"]').style.setProperty("--rating", average.toFixed(2));
-    root.querySelector('[data-role="review-count"]').textContent = String(total);
-    root.querySelector('[data-role="summary"]').textContent = `${pluralize(total, "отзыв", "отзыва", "отзывов")} покупателей · ${pluralize(filtered.length, "показан", "показано", "показано")}`;
+    scoreEl.textContent = average.toFixed(1);
+    const stars = root.querySelector('[data-role="stars"]');
+    const countEl = root.querySelector('[data-role="review-count"]');
+    const summaryEl = root.querySelector('[data-role="summary"]');
+    if (stars) stars.style.setProperty("--rating", average.toFixed(2));
+    if (countEl) countEl.textContent = String(total);
+    if (summaryEl) summaryEl.textContent = `${pluralize(total, "отзыв", "отзыва", "отзывов")} покупателей · ${pluralize(filtered.length, "показан", "показано", "показано")}`;
   }
 
   function renderSegments(root, state, reviews) {
-    const marketplaces = ["all", ...unique(reviews.map((review) => review.marketplace))];
     const marketplaceRoot = root.querySelector('[data-role="marketplaces"]');
-    if (!state.config.visibility.filters) {
-      root.querySelector('[data-role="quick-filters"]').innerHTML = "";
-      marketplaceRoot.innerHTML = "";
-      root.querySelector('[data-role="ratings"]').innerHTML = "";
-      root.querySelector('[data-role="custom-filters"]').innerHTML = "";
+    if (!state.config.visibility.filters || !marketplaceRoot) {
+      ["quick-filters", "marketplaces", "ratings", "custom-filters"].forEach((role) => {
+        const el = root.querySelector(`[data-role="${role}"]`);
+        if (el) el.innerHTML = "";
+      });
       return;
     }
+
+    const marketplaces = ["all", ...unique(reviews.map((review) => review.marketplace))];
     const quickRoot = root.querySelector('[data-role="quick-filters"]');
     quickRoot.innerHTML = "";
     quickRoot.appendChild(segmentButton("Новые", state.sort === "newest", () => {
@@ -789,6 +854,7 @@
   }
   function renderDistribution(root, reviews) {
     const distRoot = root.querySelector('[data-role="distribution"]');
+    if (!distRoot) return;
     distRoot.innerHTML = "";
     const max = Math.max(1, ...[1, 2, 3, 4, 5].map((rating) => countByRating(reviews, rating)));
     [5, 4, 3, 2, 1].forEach((rating) => {
@@ -811,6 +877,7 @@
     });
 
     const marketRoot = root.querySelector('[data-role="market-counts"]');
+    if (!marketRoot) return;
     marketRoot.innerHTML = "";
     unique(reviews.map((review) => review.marketplace)).forEach((marketplace) => {
       const row = document.createElement("div");
@@ -822,6 +889,7 @@
 
   function renderMediaStrip(root, reviews, config) {
     const mediaRoot = root.querySelector('[data-role="media-strip"]');
+    if (!mediaRoot) return;
     if (!config.visibility.photos) {
       mediaRoot.innerHTML = "";
       mediaRoot.hidden = true;
@@ -908,6 +976,7 @@
 
   function renderWall(root, reviews, config) {
     const wallRoot = root.querySelector('[data-role="wall"]');
+    if (!wallRoot) return;
     wallRoot.hidden = true;
     if (config.layout.mode !== "wall" || !config.visibility.photos) {
       wallRoot.innerHTML = "";
@@ -962,6 +1031,7 @@
 
   function renderList(root, reviews, state) {
     const list = root.querySelector('[data-role="list"]');
+    if (!list) return;
     list.innerHTML = "";
     reviews.forEach((review) => {
       const card = document.createElement("article");
@@ -1330,10 +1400,13 @@
     if (!config.visibility.sellerAnswers || !answer || !answer.text) {
       return "";
     }
-    const title = answer.kind === "seller" ? "Ответ продавца" : "Ответ магазина";
+    const answers = config.answers || defaultConfig.answers;
+    const fallbackTitle = answer.kind === "seller" ? "Ответ продавца" : "Ответ магазина";
+    const title = String(answers.title || "").trim() || fallbackTitle;
+    const showTitle = answers.showTitle !== false;
     return `
-      <div class="rw-answer" data-answer-kind="${escapeHTML(answer.kind || "")}">
-        <div class="rw-answer-title">${title}</div>
+      <div class="rw-answer" data-answer-kind="${escapeHTML(answer.kind || "")}" data-ans-style="${escapeHTML(answers.style)}">
+        ${showTitle ? `<div class="rw-answer-title">${escapeHTML(title)}</div>` : ""}
         <p>${escapeHTML(answer.text)}</p>
       </div>
     `;
@@ -1781,6 +1854,28 @@
     };
   }
 
+  const widgetSections = { summary: true, media: true, filters: true, list: true, form: true };
+
+  function normalizeSections(raw, visibility) {
+    // Legacy configs published before `sections` gated blocks via visibility flags.
+    const hidden = {};
+    if (visibility) {
+      if (visibility.ratingDistribution === false) hidden.summary = true;
+      if (visibility.photos === false) hidden.media = true;
+      if (visibility.filters === false) hidden.filters = true;
+    }
+    const out = [];
+    const seen = {};
+    for (const id of Array.isArray(raw) && raw.length ? raw : defaultConfig.layout.sections) {
+      if (!widgetSections[id] || seen[id] || hidden[id]) continue;
+      seen[id] = true;
+      out.push(id);
+    }
+    // The list is the point of the widget — always render it.
+    if (!seen.list) out.push("list");
+    return out;
+  }
+
   function normalizeConfig(config) {
     config = config || {};
     const merged = {
@@ -1788,6 +1883,9 @@
       typography: { ...defaultConfig.typography, ...(config.typography || {}) },
       layout: { ...defaultConfig.layout, ...(config.layout || {}) },
       header: { ...defaultConfig.header, ...(config.header || {}) },
+      answers: { ...defaultConfig.answers, ...(config.answers || {}) },
+      viewer: { ...defaultConfig.viewer, ...(config.viewer || {}) },
+      filters: { ...defaultConfig.filters, ...(config.filters || {}) },
       appearance: { ...defaultConfig.appearance, ...(config.appearance || {}) },
       visibility: { ...defaultConfig.visibility, ...(config.visibility || {}) },
       defaults: { ...defaultConfig.defaults, ...(config.defaults || {}) },
@@ -1797,6 +1895,26 @@
       marketplacePolicy: normalizeMarketplacePolicy(config.marketplacePolicy),
     };
     merged.header.title = String(merged.header.title || "").trim() || defaultConfig.header.title;
+    if (!["row", "stack", "center"].includes(merged.header.layout)) {
+      merged.header.layout = "row";
+    }
+    if (!["card", "plain", "bubble", "accent"].includes(merged.answers.style)) {
+      merged.answers.style = "card";
+    }
+    merged.answers.color = normalizeHexColor(merged.answers.color) || defaultConfig.answers.color;
+    merged.answers.title = String(merged.answers.title || "").trim();
+    merged.answers.showTitle = merged.answers.showTitle !== false;
+    if (merged.viewer.chrome !== "min") {
+      merged.viewer.chrome = "full";
+    }
+    merged.viewer.showOriginal = merged.viewer.showOriginal !== false;
+    merged.viewer.showCounter = merged.viewer.showCounter !== false;
+    if (!["rows", "dropdowns", "chips"].includes(merged.filters.layout)) {
+      merged.filters.layout = "rows";
+    }
+    merged.filters.collapsible = merged.filters.collapsible === true;
+    merged.filters.multiSelect = merged.filters.multiSelect === true;
+    merged.filters.labelMode = merged.filters.labelMode === "plain" ? "plain" : "all";
     if (![
       "default",
       "classic",
@@ -1817,6 +1935,7 @@
     merged.layout.columns = Math.round(clampNumber(merged.layout.columns, 1, 4, 2));
     merged.layout.pageSize = Math.round(clampNumber(merged.layout.pageSize, 1, 24, 3));
     merged.layout.tileHover = merged.layout.tileHover !== false;
+    merged.layout.sections = normalizeSections(merged.layout.sections, merged.visibility);
     if (!["list", "grid", "carousel", "video", "wall"].includes(merged.layout.mode)) {
       merged.layout.mode = "list";
     }
@@ -1888,6 +2007,16 @@
     };
   }
 
+  function normalizeHexColor(value) {
+    if (typeof value !== "string") return "";
+    const v = value.trim();
+    if (/^#[0-9a-fA-F]{6}$/.test(v)) return v.toLowerCase();
+    if (/^#[0-9a-fA-F]{3}$/.test(v)) {
+      return "#" + v.slice(1).split("").map((c) => c + c).join("").toLowerCase();
+    }
+    return "";
+  }
+
   function colorChannels(value, fallback) {
     let hex = String(value || "").trim().replace(/^#/, "");
     if (hex.length === 3) {
@@ -1945,9 +2074,9 @@
     root.classList.toggle("rw-preset-native-kit", config.appearance?.preset === "native-kit");
     root.classList.toggle("rw-inherit-site", config.typography.inheritSite || config.appearance?.preset === "native-kit");
     root.classList.toggle("rw-preset-minimal", config.appearance?.preset === "minimal");
-    root.classList.toggle("rw-preset-editorial", config.appearance?.preset === "editorial");
     root.classList.toggle("rw-preset-ugc-editorial", config.appearance?.preset === "ugc-editorial");
     root.classList.toggle("rw-preset-ugc-community", config.appearance?.preset === "ugc-community");
+    root.classList.toggle("rw-preset-editorial", config.appearance?.preset === "editorial");
     root.classList.toggle("rw-preset-lead-summary", config.appearance?.preset === "lead-summary");
     root.classList.toggle("rw-preset-shoppable", config.appearance?.preset === "shoppable");
     root.classList.toggle("rw-preset-classic", config.appearance?.preset === "classic");
@@ -1967,6 +2096,36 @@
     root.classList.toggle("rw-hide-distribution", !config.visibility.ratingDistribution);
     root.classList.toggle("rw-hide-badges", !config.visibility.marketplaceBadges);
     root.classList.toggle("rw-hide-filters", !config.visibility.filters);
+
+    // Тёмная тема: встроенная палитра поверх светлых дефолтов (акцент и звёзды
+    // пользователя сохраняются).
+    if (config.theme.dark && !config.typography.inheritSite) {
+      root.style.setProperty("--rw-text", "#F1EEF7");
+      root.style.setProperty("--rw-muted", "#A79FB5");
+      root.style.setProperty("--rw-border", "#3B3545");
+      root.style.setProperty("--rw-panel", "#1E1A26");
+      root.style.setProperty("--rw-soft", "#2A2534");
+      root.style.setProperty("--rw-soft-muted", "#3D3750");
+      root.style.setProperty("--rw-star-empty", "#3B3545");
+    }
+    root.classList.toggle("rw-dark", config.theme.dark === true);
+
+    // Схема шапки: ряд / стопка / центр.
+    root.classList.toggle("rw-head-stack", config.header.layout === "stack");
+    root.classList.toggle("rw-head-center", config.header.layout === "center");
+
+    // Ответ продавца: цвет и стиль.
+    const answers = config.answers || defaultConfig.answers;
+    const ansChannels = colorChannels(answers.color, defaultConfig.answers.color);
+    root.style.setProperty("--rw-ans", normalizeHexColor(answers.color) || defaultConfig.answers.color);
+    root.style.setProperty("--rw-ans-tint", mixChannels(ansChannels, colorChannels(theme.panel, "#ffffff"), 0.92));
+    root.style.setProperty("--rw-ans-border", mixChannels(ansChannels, colorChannels(theme.panel, "#ffffff"), 0.72));
+    root.classList.toggle("rw-ans-plain", answers.style === "plain");
+    root.classList.toggle("rw-ans-bubble", answers.style === "bubble");
+    root.classList.toggle("rw-ans-accent", answers.style === "accent");
+
+    // Хром просмотрщика: минималистичный прячет верхнюю панель.
+    root.classList.toggle("rw-viewer-min", config.viewer.chrome === "min");
   }
 
   function clampNumber(value, min, max, fallback) {

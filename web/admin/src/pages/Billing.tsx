@@ -88,10 +88,15 @@ export default function Billing() {
 
   return (
     <section className="stack">
+      <div className="pagehead">
+        <div>
+          <h1>Подписка</h1>
+          <p className="sub">Тариф и оплата</p>
+        </div>
+      </div>
       <section className="panel">
         <div className="billing-status">
           <div>
-            <h3>Подписка</h3>
             <p className="muted">
               Тариф: <strong>{PLAN_LABELS[tenant.plan] ?? tenant.plan}</strong> · Статус:{' '}
               <strong>
@@ -116,8 +121,8 @@ export default function Billing() {
       </section>
 
       <section className="panel">
-        <h3>Оплата</h3>
-        <p className="muted">
+        <h3 style={{ marginBottom: 8 }}>Оплата</h3>
+        <p className="hint" style={{ marginBottom: 4 }}>
           Оплата через Робокассу: карты, СБП, ЮMoney. После оплаты подписка активируется автоматически
           в течение минуты.
         </p>

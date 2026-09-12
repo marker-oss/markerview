@@ -34,7 +34,8 @@ type ReviewDraft = {
 const PAGE_SIZE = 25
 const SEARCH_DELAY_MS = 350
 
-export default function Reviews() {
+export default function Reviews({ questions, pendingQuestions }: { questions: ReactNode; pendingQuestions: number }) {
+  const [tab, setTab] = useState<'reviews' | 'questions'>('reviews')
   const [data, setData] = useState<ListResponse>({ reviews: [], total: 0 })
   const [marketplace, setMarketplace] = useState('')
   const [visibility, setVisibility] = useState('')
@@ -135,8 +136,8 @@ export default function Reviews() {
       setArticlePins(new Set())
       return
     }
-    const data = await apiGet<{ reviewIds: number[] }>(`/admin/api/articles/${encodeURIComponent(currentArticle)}/pins`)
-    setArticlePins(new Set(data.reviewIds))
+    const pinsData = await apiGet<{ reviewIds: number[] }>(`/admin/api/articles/${encodeURIComponent(currentArticle)}/pins`)
+    setArticlePins(new Set(pinsData.reviewIds))
   }
 
   const from = data.total === 0 ? 0 : offset + 1
@@ -169,7 +170,7 @@ export default function Reviews() {
 
   async function deleteReview(id: number) {
     try {
-      await apiWrite('DELETE', `/admin/api/reviews/${id}`)
+      await apiWrite('DELETE', `/admin/api/reviews/${id}`, {})
       load()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Запрос не выполнен')
@@ -194,7 +195,7 @@ export default function Reviews() {
     }
   }
 
-  async function saveReviewEdits(id: number, status?: 'pending' | 'approved' | 'rejected') {
+  async function saveReviewEdits(id: number, statusPatch?: 'pending' | 'approved' | 'rejected') {
     const draft = editDrafts[id]
     if (!draft) return
     const rating = Number(draft.rating)
@@ -205,7 +206,7 @@ export default function Reviews() {
       text: draft.text,
       pros: draft.pros,
       cons: draft.cons,
-      status,
+      status: statusPatch,
     })
   }
 
@@ -286,7 +287,7 @@ export default function Reviews() {
     setMediaViewer({
       items: review.media,
       index,
-      title: `${review.authorName || review.marketplace} · ${review.marketplace}`,
+      title: `${review.authorName || review.marketplace} · ${sourceLabel(review.marketplace)}`,
     })
   }
 
@@ -307,276 +308,325 @@ export default function Reviews() {
   const activeMedia = mediaViewer?.items[mediaViewer.index] ?? null
 
   return (
-    <section className="stack">
-      <div className="toolbar">
-        <select value={marketplace} onChange={(e) => resetTo(setMarketplace)(e.target.value)}>
-          <option value="">Все источники</option>
-          <option value="site">Сайт</option>
-          <option value="wb">Wildberries</option>
-          <option value="ym">Yandex Market</option>
-          <option value="ozon">Ozon</option>
-        </select>
-        <select value={visibility} onChange={(e) => resetTo(setVisibility)(e.target.value)}>
-          <option value="">Любой статус</option>
-          <option value="visible">Показан</option>
-          <option value="hidden">Скрыт</option>
-        </select>
-        <select value={status} onChange={(e) => resetTo(setStatus)(e.target.value)}>
-          <option value="">Активные</option>
-          <option value="pending">На модерации</option>
-          <option value="approved">Одобренные</option>
-          <option value="rejected">Отклонённые</option>
-          <option value="imported">Импортированные</option>
-          <option value="deleted">Удалённые</option>
-          <option value="all">Все</option>
-        </select>
-        <select value={sort} onChange={(e) => resetTo(setSort)(e.target.value)}>
-          <option value="">Сначала новые</option>
-          <option value="highest">Высокий рейтинг</option>
-          <option value="lowest">Низкий рейтинг</option>
-          <option value="media">Сначала с фото</option>
-        </select>
-        <input
-          className="search-input"
-          value={searchDraft}
-          onChange={(e) => setSearchDraft(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && runSearch()}
-          placeholder="Поиск по тексту"
-        />
-        {searchDraft && (
-          <button className="secondary clear-button" onClick={clearSearch} aria-label="Очистить поиск по тексту">
-            ×
-          </button>
-        )}
-        <input
-          className="search-input"
-          value={articleDraft}
-          onChange={(e) => setArticleDraft(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && runSearch()}
-          placeholder="Артикул или часть"
-        />
-        {articleDraft && (
-          <button className="secondary clear-button" onClick={clearArticle} aria-label="Очистить поиск по артикулу">
-            ×
-          </button>
-        )}
-        <button className="secondary" onClick={runSearch}>
-          Найти
-        </button>
-        <button className="secondary publish-button" disabled={publishing} onClick={publishChanges}>
-          {publishing ? 'Публикуем...' : 'Опубликовать изменения'}
-        </button>
-        <span className="muted">Отзывов: {data.total}</span>
-      </div>
-      {selected.size > 0 && (
-        <div className="toolbar bulk-bar">
-          <span className="muted">Выбрано: {selected.size}</span>
-          <button className="secondary" onClick={() => bulkModerate({ visibility: 'hidden' })}>
-            Скрыть
-          </button>
-          <button className="secondary" onClick={() => bulkModerate({ visibility: 'visible' })}>
-            Показать
-          </button>
-          <button className="secondary" onClick={() => bulkModerate({ pinned: true })}>
-            Закрепить
-          </button>
-          <button className="secondary" onClick={() => bulkModerate({ pinned: false })}>
-            Открепить
-          </button>
-          <button className="secondary danger" onClick={() => bulkModerate({ status: 'deleted' })}>
-            Удалить
-          </button>
-          <button className="secondary" onClick={() => bulkModerate({ status: 'approved' })}>
-            Одобрить
-          </button>
-          <button className="secondary" onClick={() => bulkModerate({ status: 'rejected' })}>
-            Отклонить
-          </button>
-          <button className="secondary" onClick={() => setSelected(new Set())}>
-            Снять выбор
-          </button>
-          <p className="muted hide-warning">
-            Скрытие — только для спама, дублей и мусора. Не скрывайте негативные отзывы ради
-            рейтинга: это риск по ЗоЗПП и закону «О рекламе».
-          </p>
+    <section>
+      <div className="pagehead">
+        <div>
+          <h1>Отзывы</h1>
+          <p className="sub">Модерация, ответы и закрепление на товарах</p>
         </div>
-      )}
-      <section className="panel">
-        <div className="table">
-          <div className="table-head grid-reviews">
-            <span>
-              <input type="checkbox" checked={allOnPageSelected} onChange={toggleAllOnPage} aria-label="Выбрать все" />
+        <div className="actions">
+          <button className="secondary" onClick={publishChanges} disabled={publishing}>
+            {publishing ? 'Публикуем…' : 'Обновить выгрузку'}
+          </button>
+        </div>
+      </div>
+
+      <div className="ptabs" role="group" aria-label="Раздел модерации">
+        <button aria-pressed={tab === 'reviews'} onClick={() => setTab('reviews')}>
+          Отзывы
+        </button>
+        <button aria-pressed={tab === 'questions'} onClick={() => setTab('questions')}>
+          Вопросы
+          {pendingQuestions > 0 && <span className="navcount">{pendingQuestions}</span>}
+        </button>
+      </div>
+
+      {tab === 'questions' ? (
+        questions
+      ) : (
+        <>
+          <div className="card fbar">
+            <select value={marketplace} onChange={(e) => resetTo(setMarketplace)(e.target.value)} style={{ maxWidth: 170 }}>
+              <option value="">Все площадки</option>
+              <option value="site">Сайт</option>
+              <option value="wb">Wildberries</option>
+              <option value="ym">Яндекс Маркет</option>
+              <option value="ozon">Ozon</option>
+            </select>
+            <select value={visibility} onChange={(e) => resetTo(setVisibility)(e.target.value)} style={{ maxWidth: 160 }}>
+              <option value="">Любая видимость</option>
+              <option value="visible">Показан</option>
+              <option value="hidden">Скрыт</option>
+            </select>
+            <select value={status} onChange={(e) => resetTo(setStatus)(e.target.value)} style={{ maxWidth: 170 }}>
+              <option value="">Активные</option>
+              <option value="pending">На модерации</option>
+              <option value="approved">Одобренные</option>
+              <option value="rejected">Отклонённые</option>
+              <option value="imported">Импортированные</option>
+              <option value="deleted">Удалённые</option>
+              <option value="all">Все</option>
+            </select>
+            <select value={sort} onChange={(e) => resetTo(setSort)(e.target.value)} style={{ maxWidth: 180 }}>
+              <option value="">Сначала новые</option>
+              <option value="highest">Высокий рейтинг</option>
+              <option value="lowest">Низкий рейтинг</option>
+              <option value="media">Сначала с фото</option>
+            </select>
+            <label className="search" style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '1 1 220px', maxWidth: 320, border: '1.5px solid var(--border)', borderRadius: 'var(--r-s)', background: 'var(--surface)', minHeight: 38, padding: '0 10px' }}>
+              <input
+                style={{ border: 0, outline: 'none', flex: 1, minHeight: 30, background: 'transparent', fontSize: 13.5 }}
+                value={searchDraft}
+                onChange={(e) => setSearchDraft(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && runSearch()}
+                placeholder="Поиск по тексту"
+              />
+              {searchDraft && (
+                <button className="quiet sm" style={{ minHeight: 24, padding: '0 4px' }} onClick={clearSearch} aria-label="Очистить поиск">
+                  ×
+                </button>
+              )}
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '0 1 220px', border: '1.5px solid var(--border)', borderRadius: 'var(--r-s)', background: 'var(--surface)', minHeight: 38, padding: '0 10px' }}>
+              <input
+                style={{ border: 0, outline: 'none', flex: 1, minHeight: 30, background: 'transparent', fontSize: 13.5 }}
+                value={articleDraft}
+                onChange={(e) => setArticleDraft(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && runSearch()}
+                placeholder="Артикул"
+              />
+              {articleDraft && (
+                <button className="quiet sm" style={{ minHeight: 24, padding: '0 4px' }} onClick={clearArticle} aria-label="Очистить артикул">
+                  ×
+                </button>
+              )}
+            </label>
+            <span className="count">
+              <b>{data.total}</b> отзывов
             </span>
-            <span>Отзыв</span>
-            <span>Оценка</span>
-            <span>Статус</span>
-            <span></span>
           </div>
-          {data.reviews.map((review) => (
-            <div className="table-row grid-reviews" key={review.id}>
-              <span>
-                <input
-                  type="checkbox"
-                  checked={selected.has(review.id)}
-                  onChange={() => toggleOne(review.id)}
-                  aria-label={`Выбрать отзыв ${review.id}`}
-                />
-              </span>
-              <div>
-                <strong>{review.authorName || review.marketplace}</strong>
-                <p>{highlight(review.text || review.pros || review.cons || review.externalReviewId, highlightTerms)}</p>
-                <small>
-                  {sourceLabel(review.marketplace)} · {highlight(review.sellerArticle || review.externalProductId, highlightTerms)}
-                  {review.authorEmail ? ` · ${review.authorEmail}` : ''}
-                </small>
-                {review.custom && Object.keys(review.custom).length > 0 && (
-                  <small className="review-custom">
-                    {Object.entries(review.custom)
-                      .map(([key, value]) => `${key}: ${value}`)
-                      .join(' · ')}
-                  </small>
-                )}
-                {review.media.length > 0 && (
-                  <div className="review-media-strip" aria-label="Медиа отзыва">
-                    {review.media.slice(0, 6).map((item, index) => (
-                      <button
-                        className={`review-media-thumb ${item.kind === 'video' ? 'is-video' : ''}`}
-                        type="button"
-                        key={`${item.url}-${index}`}
-                        onClick={() => openMedia(review, index)}
-                        aria-label={item.kind === 'video' ? 'Открыть видео отзыва' : 'Открыть фото отзыва'}
-                      >
-                        {mediaThumbnail(item) ? <img src={mediaThumbnail(item)} alt="" loading="lazy" /> : <span>Видео</span>}
-                      </button>
-                    ))}
-                    {review.media.length > 6 && <span className="review-media-more">+{review.media.length - 6}</span>}
-                  </div>
-                )}
+
+          {selected.size > 0 && (
+            <div className="bulk-bar">
+              <span>Выбрано: {selected.size}</span>
+              <button className="secondary sm" onClick={() => bulkModerate({ visibility: 'hidden' })}>
+                Скрыть
+              </button>
+              <button className="secondary sm" onClick={() => bulkModerate({ visibility: 'visible' })}>
+                Показать
+              </button>
+              <button className="secondary sm" onClick={() => bulkModerate({ pinned: true })}>
+                Закрепить
+              </button>
+              <button className="secondary sm" onClick={() => bulkModerate({ status: 'approved' })}>
+                Одобрить
+              </button>
+              <button className="danger sm" onClick={() => bulkModerate({ status: 'deleted' })}>
+                Удалить
+              </button>
+              <button className="quiet" onClick={() => setSelected(new Set())}>
+                Снять выбор ✕
+              </button>
+              <p className="hide-warning">
+                Скрытие — только для спама, дублей и мусора. Не скрывайте негативные отзывы ради рейтинга: это
+                риск по ЗоЗПП и закону «О рекламе».
+              </p>
+            </div>
+          )}
+
+          <div className="card" style={selected.size > 0 ? { borderTopLeftRadius: 0, borderTopRightRadius: 0 } : undefined}>
+            <div className="table">
+              <div className="table-head grid-reviews">
+                <span>
+                  <input type="checkbox" checked={allOnPageSelected} onChange={toggleAllOnPage} aria-label="Выбрать все" />
+                </span>
+                <span>Отзыв</span>
+                <span>Оценка</span>
+                <span>Статус</span>
+                <span></span>
               </div>
-              <span>{review.rating ?? '-'} / 5</span>
-              <span className={review.status === 'pending' ? 'status-warn' : review.visibility === 'visible' ? 'status-ok' : 'status-muted'}>
-                {statusLabel(review)}
-              </span>
-              <div className="actions">
-                {review.status === 'deleted' ? (
-                  <>
-                    <button className="secondary" onClick={() => restoreReview(review.id)}>
-                      Восстановить
-                    </button>
-                    <button className="secondary danger" onClick={() => purgeReview(review.id)}>
-                      Удалить навсегда
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    {review.marketplace === 'site' && (
+              {data.reviews.map((review) => (
+                <div className="table-row grid-reviews" key={review.id}>
+                  <span>
+                    <input
+                      type="checkbox"
+                      checked={selected.has(review.id)}
+                      onChange={() => toggleOne(review.id)}
+                      aria-label={`Выбрать отзыв ${review.id}`}
+                    />
+                  </span>
+                  <div>
+                    <div className="who">
+                      <span className="av">{(review.authorName || review.marketplace).slice(0, 1).toUpperCase()}</span>
+                      <span>
+                        <b>{review.authorName || sourceLabel(review.marketplace)}</b>
+                        <span>{new Date(review.createdAt).toLocaleDateString('ru-RU')}</span>
+                      </span>
+                    </div>
+                    <p style={{ margin: '6px 0 0' }}>{highlight(review.text || review.pros || review.cons || review.externalReviewId, highlightTerms)}</p>
+                    <small className="muted">
+                      {sourceLabel(review.marketplace)} · {highlight(review.sellerArticle || review.externalProductId, highlightTerms)}
+                      {review.authorEmail ? ` · ${review.authorEmail}` : ''}
+                    </small>
+                    {review.custom && Object.keys(review.custom).length > 0 && (
+                      <div className="attrflags" style={{ marginTop: 6 }}>
+                        {Object.entries(review.custom).map(([key, value]) => (
+                          <span className="bag bag-neutral" key={key}>
+                            {key}: {String(value)}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {review.media.length > 0 && (
+                      <div className="review-media-strip" aria-label="Медиа отзыва">
+                        {review.media.slice(0, 6).map((item, index) => (
+                          <button
+                            className={`review-media-thumb ${item.kind === 'video' ? 'is-video' : ''}`}
+                            type="button"
+                            key={`${item.url}-${index}`}
+                            onClick={() => openMedia(review, index)}
+                            aria-label={item.kind === 'video' ? 'Открыть видео отзыва' : 'Открыть фото отзыва'}
+                          >
+                            {mediaThumbnail(item) ? <img src={mediaThumbnail(item)} alt="" loading="lazy" /> : <span>Видео</span>}
+                          </button>
+                        ))}
+                        {review.media.length > 6 && <span className="review-media-more">+{review.media.length - 6}</span>}
+                      </div>
+                    )}
+                  </div>
+                  <span className="stars" title={`${review.rating ?? '—'} из 5`}>
+                    {starRow(review.rating)}
+                  </span>
+                  <span>
+                    <span
+                      className={`bag ${
+                        review.status === 'pending' ? 'bag-warn' : review.status === 'deleted' ? 'bag-err' : review.visibility === 'visible' ? 'bag-ok' : 'bag-neutral'
+                      }`}
+                    >
+                      {statusLabel(review)}
+                    </span>
+                    {review.replyPublish && (
+                      <div style={{ marginTop: 6 }}>
+                        {review.replyPublish.state === 'published' && <span className="bag bag-ok">Ответ на МП</span>}
+                        {review.replyPublish.state === 'pending' && <span className="bag bag-neutral">Ответ публикуется…</span>}
+                        {review.replyPublish.state === 'unsupported' && <span className="bag bag-neutral">Ответы на МП нет</span>}
+                        {review.replyPublish.state === 'failed' && <span className="bag bag-warn">Ошибка ответа</span>}
+                      </div>
+                    )}
+                  </span>
+                  <div className="actions">
+                    {review.status === 'deleted' ? (
                       <>
-                        <button className="secondary" onClick={() => saveReviewEdits(review.id, 'approved')}>
-                          Одобрить
+                        <button className="secondary sm" onClick={() => restoreReview(review.id)}>
+                          Восстановить
                         </button>
-                        <button className="secondary" onClick={() => saveReviewEdits(review.id, 'rejected')}>
-                          Отклонить
+                        <button className="danger sm" onClick={() => purgeReview(review.id)}>
+                          Навсегда
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        {review.marketplace === 'site' && review.status === 'pending' && (
+                          <>
+                            <button className="secondary sm" onClick={() => saveReviewEdits(review.id, 'approved')}>
+                              Одобрить
+                            </button>
+                            <button className="quiet sm" onClick={() => saveReviewEdits(review.id, 'rejected')}>
+                              Отклонить
+                            </button>
+                          </>
+                        )}
+                        <button
+                          className="quiet sm"
+                          onClick={() => moderate(review.id, { visibility: review.visibility === 'visible' ? 'hidden' : 'visible' })}
+                        >
+                          {review.visibility === 'visible' ? 'Скрыть' : 'Показать'}
+                        </button>
+                        <button className="quiet sm" onClick={() => moderate(review.id, { pinned: !review.pinned })}>
+                          {review.pinned ? 'Открепить' : 'Закрепить'}
+                        </button>
+                        {article.trim() && (
+                          <button className="quiet sm" onClick={() => toggleArticlePin(review.id)}>
+                            {articlePins.has(review.id) ? 'Снять с товара' : 'На страницу товара'}
+                          </button>
+                        )}
+                        {review.marketplace === 'site' && (
+                          <button className="quiet sm" onClick={() => purgeReview(review.id)}>
+                            Навсегда
+                          </button>
+                        )}
+                        <button className="quiet sm" style={{ color: 'var(--danger)' }} onClick={() => deleteReview(review.id)}>
+                          Удалить
                         </button>
                       </>
                     )}
-                    <button
-                      className="secondary"
-                      onClick={() => moderate(review.id, { visibility: review.visibility === 'visible' ? 'hidden' : 'visible' })}
-                    >
-                      {review.visibility === 'visible' ? 'Скрыть' : 'Показать'}
-                    </button>
-                    <button className="secondary" onClick={() => moderate(review.id, { pinned: !review.pinned })}>
-                      {review.pinned ? 'Открепить' : 'Закрепить'}
-                    </button>
-                    {article.trim() && (
-                      <button className="secondary" onClick={() => toggleArticlePin(review.id)}>
-                        {articlePins.has(review.id) ? 'Снять с товара' : 'На страницу товара'}
+                  </div>
+                  {review.marketplace === 'site' && review.status !== 'deleted' && editDrafts[review.id] && (
+                    <div className="submission-editor">
+                      <label>
+                        <span>Артикул</span>
+                        <input value={editDrafts[review.id].sellerArticle} onChange={(e) => updateDraft(review.id, 'sellerArticle', e.target.value)} />
+                      </label>
+                      <label>
+                        <span>Оценка</span>
+                        <input type="number" min={1} max={5} value={editDrafts[review.id].rating} onChange={(e) => updateDraft(review.id, 'rating', e.target.value)} />
+                      </label>
+                      <label>
+                        <span>Имя</span>
+                        <input value={editDrafts[review.id].authorName} onChange={(e) => updateDraft(review.id, 'authorName', e.target.value)} />
+                      </label>
+                      <label>
+                        <span>Плюсы</span>
+                        <input value={editDrafts[review.id].pros} onChange={(e) => updateDraft(review.id, 'pros', e.target.value)} />
+                      </label>
+                      <label>
+                        <span>Минусы</span>
+                        <input value={editDrafts[review.id].cons} onChange={(e) => updateDraft(review.id, 'cons', e.target.value)} />
+                      </label>
+                      <label className="wide">
+                        <span>Текст</span>
+                        <textarea value={editDrafts[review.id].text} rows={3} onChange={(e) => updateDraft(review.id, 'text', e.target.value)} />
+                      </label>
+                      <button className="secondary" onClick={() => saveReviewEdits(review.id)}>
+                        Сохранить правки
                       </button>
-                    )}
-                    <button className="secondary danger" onClick={() => deleteReview(review.id)}>
-                      Удалить
+                    </div>
+                  )}
+                  <div className="reply-editor">
+                    <textarea
+                      value={replyDrafts[review.id] ?? ''}
+                      onChange={(e) => setReplyDrafts((prev) => ({ ...prev, [review.id]: e.target.value }))}
+                      placeholder="Ответ магазина"
+                      rows={2}
+                    />
+                    <button className="secondary" onClick={() => saveReply(review.id)}>
+                      Сохранить ответ
                     </button>
-                    {review.marketplace === 'site' && (
-                      <button className="secondary danger" onClick={() => purgeReview(review.id)}>
-                        Навсегда
-                      </button>
+                    {review.replyPublish?.state === 'failed' && (
+                      <div className="reply-publish">
+                        <span className="status-warn">Ошибка публикации: {review.replyPublish.error}</span>
+                        <button className="secondary sm" onClick={() => retryPublish(review.id)}>
+                          Повторить
+                        </button>
+                      </div>
                     )}
-                  </>
-                )}
-              </div>
-              {review.marketplace === 'site' && review.status !== 'deleted' && editDrafts[review.id] && (
-                <div className="submission-editor">
-                  <label>
-                    <span>Артикул</span>
-                    <input value={editDrafts[review.id].sellerArticle} onChange={(e) => updateDraft(review.id, 'sellerArticle', e.target.value)} />
-                  </label>
-                  <label>
-                    <span>Оценка</span>
-                    <input type="number" min={1} max={5} value={editDrafts[review.id].rating} onChange={(e) => updateDraft(review.id, 'rating', e.target.value)} />
-                  </label>
-                  <label>
-                    <span>Имя</span>
-                    <input value={editDrafts[review.id].authorName} onChange={(e) => updateDraft(review.id, 'authorName', e.target.value)} />
-                  </label>
-                  <label>
-                    <span>Плюсы</span>
-                    <input value={editDrafts[review.id].pros} onChange={(e) => updateDraft(review.id, 'pros', e.target.value)} />
-                  </label>
-                  <label>
-                    <span>Минусы</span>
-                    <input value={editDrafts[review.id].cons} onChange={(e) => updateDraft(review.id, 'cons', e.target.value)} />
-                  </label>
-                  <label className="wide">
-                    <span>Текст</span>
-                    <textarea value={editDrafts[review.id].text} rows={3} onChange={(e) => updateDraft(review.id, 'text', e.target.value)} />
-                  </label>
-                  <button className="secondary" onClick={() => saveReviewEdits(review.id)}>
-                    Сохранить правки
-                  </button>
+                  </div>
+                </div>
+              ))}
+              {data.reviews.length === 0 && (
+                <div className="empty" style={{ gridColumn: '1 / -1' }}>
+                  <b>Под эти фильтры отзывов нет</b>
+                  <p>Ослабьте условия фильтра или подключите новую площадку.</p>
                 </div>
               )}
-              <div className="reply-editor">
-                <textarea
-                  value={replyDrafts[review.id] ?? ''}
-                  onChange={(e) => setReplyDrafts((prev) => ({ ...prev, [review.id]: e.target.value }))}
-                  placeholder="Ответ магазина"
-                  rows={2}
-                />
-                <button className="secondary" onClick={() => saveReply(review.id)}>
-                  Сохранить ответ
-                </button>
-                {review.replyPublish && (
-                  <div className="reply-publish">
-                    {review.replyPublish.state === 'published' && <span className="status-ok">Опубликовано на МП</span>}
-                    {review.replyPublish.state === 'pending' && <span className="status-muted">Публикация…</span>}
-                    {review.replyPublish.state === 'unsupported' && <span className="status-muted">Публикация на МП недоступна</span>}
-                    {review.replyPublish.state === 'failed' && (
-                      <>
-                        <span className="status-warn">Ошибка публикации: {review.replyPublish.error}</span>
-                        <button className="secondary" onClick={() => retryPublish(review.id)}>Повторить</button>
-                      </>
-                    )}
-                  </div>
-                )}
-              </div>
             </div>
-          ))}
-          {data.reviews.length === 0 && <p className="muted empty">Под эти фильтры отзывов нет.</p>}
-        </div>
-      </section>
-      {data.total > 0 && (
-        <div className="toolbar pager">
-          <button className="secondary" disabled={!hasPrev} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}>
-            ← Назад
-          </button>
-          <span className="muted">
-            {from}–{to} из {data.total}
-          </span>
-          <button className="secondary" disabled={!hasNext} onClick={() => setOffset(offset + PAGE_SIZE)}>
-            Вперёд →
-          </button>
-        </div>
+            {data.total > 0 && (
+              <div className="pager">
+                <button disabled={!hasPrev} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}>
+                  ‹
+                </button>
+                <span className="cur">
+                  {from}–{to} из {data.total}
+                </span>
+                <button disabled={!hasNext} onClick={() => setOffset(offset + PAGE_SIZE)}>
+                  ›
+                </button>
+              </div>
+            )}
+          </div>
+        </>
       )}
+
       {mediaViewer && activeMedia && (
         <div className="admin-media-viewer" role="presentation">
           <div className="admin-media-backdrop" onClick={() => setMediaViewer(null)} />
@@ -586,7 +636,7 @@ export default function Reviews() {
               <a href={activeMedia.url} target="_blank" rel="noreferrer">
                 {activeMedia.kind === 'video' ? 'Открыть видео' : 'Открыть оригинал'}
               </a>
-              <button className="secondary clear-button" onClick={() => setMediaViewer(null)} aria-label="Закрыть просмотр">
+              <button className="clear-button" onClick={() => setMediaViewer(null)} aria-label="Закрыть просмотр">
                 ×
               </button>
             </div>
@@ -612,12 +662,22 @@ export default function Reviews() {
               </button>
             )}
             <div className="admin-media-count">
-              {mediaViewer.index + 1} / {mediaViewer.items.length}
+              {mediaViewer.index + 1} / {mediaViewer.items.length} · ← → листают, Esc закрывает
             </div>
           </div>
         </div>
       )}
     </section>
+  )
+}
+
+function starRow(rating: number | null) {
+  if (rating == null) return <span className="muted">—</span>
+  return (
+    <>
+      {'★'.repeat(Math.round(rating))}
+      <span style={{ opacity: 0.25 }}>{'★'.repeat(5 - Math.round(rating))}</span>
+    </>
   )
 }
 
@@ -663,12 +723,11 @@ function sourceLabel(value: string) {
 }
 
 function statusLabel(review: Review) {
-  const pin = review.pinned ? 'закреплён · ' : ''
-  if (review.status === 'pending') return `${pin}на модерации`
-  if (review.status === 'approved') return `${pin}${review.visibility === 'visible' ? 'одобрен · показан' : 'одобрен · скрыт'}`
-  if (review.status === 'rejected') return `${pin}отклонён`
+  if (review.status === 'pending') return 'на модерации'
+  if (review.status === 'approved') return review.visibility === 'visible' ? 'на сайте' : 'одобрен · скрыт'
+  if (review.status === 'rejected') return 'отклонён'
   if (review.status === 'deleted') return 'удалён'
-  return `${pin}${review.visibility === 'visible' ? 'показан' : 'скрыт'}`
+  return review.visibility === 'visible' ? 'показан' : 'скрыт'
 }
 
 function highlight(value: string, terms: string[]): ReactNode {

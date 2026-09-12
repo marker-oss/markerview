@@ -6,7 +6,7 @@ type DiagItem = { id: string; level: 'ok' | 'warn' | 'fail'; title: string; deta
 type ActivityItem = { at: string; level: string; source: string; message: string }
 type Diagnostics = { checks: DiagItem[]; activity: ActivityItem[] }
 
-const levelLabel: Record<DiagItem['level'], string> = { ok: '✓', warn: '⚠', fail: '✗' }
+const levelLabel: Record<DiagItem['level'], string> = { ok: '✓', warn: '!', fail: '✕' }
 
 export default function Status() {
   const [data, setData] = useState<Diagnostics | null>(null)
@@ -43,34 +43,49 @@ export default function Status() {
   if (!data) return <p className="muted">Загрузка...</p>
 
   return (
-    <section className="stack">
-      <section className="panel">
-        <h3>Проверка настройки</h3>
-        <div className="stack">
-          {data.checks.map((c) => (
-            <div className={`diag-item diag-${c.level}`} key={c.id}>
-              <span className="diag-mark">{levelLabel[c.level]}</span>
-              <div>
-                <strong>{c.title}</strong>
-                {c.detail && <p className="muted">{c.detail}</p>}
-              </div>
-              {c.fixHref && <a className="diag-fix" href={c.fixHref}>Открыть</a>}
-            </div>
-          ))}
+    <section>
+      <div className="pagehead">
+        <div>
+          <h1>Состояние</h1>
+          <p className="sub">Человеческим языком: что не так, почему виджета не видно и как починить</p>
         </div>
-      </section>
+        <div className="actions">
+          <button className="secondary" onClick={() => setProbe(null)} disabled={!probe}>
+            Сбросить проверку
+          </button>
+        </div>
+      </div>
 
-      <section className="panel">
-        <h3>Проверить страницу товара</h3>
-        <p className="muted">
-          Вставьте адрес страницы товара — проверим доступность сайта и что виджет сможет
-          подобрать отзывы. Если все проверки зелёные, а виджета нет — убедитесь, что контейнер
-          в Тег Менеджере опубликован (вставленный через Тег Менеджер сниппет сервер проверить
-          не может).
+      <div className="grid">
+        {data.checks.map((c) => (
+          <div className={`diag-item diag-${c.level}`} key={c.id}>
+            <span className="diag-mark">{levelLabel[c.level]}</span>
+            <div>
+              <b>{c.title}</b>
+              {c.detail && <p className="muted">{c.detail}</p>}
+            </div>
+            {c.fixHref && (
+              <a className="diag-fix" href={c.fixHref}>
+                Исправить →
+              </a>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="sec-t">
+        Проверить страницу товара
+        <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 700 }}>активная проверка</span>
+      </div>
+      <div className="card" style={{ padding: 18 }}>
+        <p className="hint" style={{ marginBottom: 12 }}>
+          Вставьте адрес страницы товара — проверим доступность сайта и что виджет сможет подобрать отзывы. Если
+          все проверки зелёные, а виджета нет — убедитесь, что контейнер в Тег Менеджере опубликован
+          (вставленный через Тег Менеджер сниппет сервер проверить не может).
         </p>
-        <div className="toolbar">
+        <div className="fbar" style={{ padding: 0 }}>
           <input
-            className="search-input"
+            style={{ flex: '1 1 320px' }}
             value={productUrl}
             onChange={(e) => setProductUrl(e.target.value)}
             placeholder="https://ваш-магазин.ру/product/..."
@@ -80,32 +95,33 @@ export default function Status() {
           </button>
         </div>
         {probe && (
-          <div className="stack">
+          <div className="grid" style={{ marginTop: 14 }}>
             {probe.map((c) => (
               <div className={`diag-item diag-${c.level}`} key={c.id}>
                 <span className="diag-mark">{levelLabel[c.level]}</span>
                 <div>
-                  <strong>{c.title}</strong>
+                  <b>{c.title}</b>
                   {c.detail && <p className="muted">{c.detail}</p>}
                 </div>
               </div>
             ))}
           </div>
         )}
-      </section>
+      </div>
 
-      <section className="panel">
-        <h3>Журнал</h3>
-        <div className="rows">
-          {data.activity.length === 0 && <p className="muted">Событий пока нет.</p>}
-          {data.activity.map((a, i) => (
-            <div className={`activity-row activity-${a.level}`} key={i}>
-              <span className="muted">{new Date(a.at).toLocaleString()}</span>
-              <span>{a.message}</span>
-            </div>
-          ))}
-        </div>
-      </section>
+      <div className="sec-t">Журнал событий</div>
+      <div className="card">
+        {data.activity.length === 0 && <div className="row"><span className="d">Событий пока нет.</span></div>}
+        {data.activity.map((a, i) => (
+          <div className="row" key={i}>
+            <span className={`bag ${a.level === 'error' || a.level === 'fail' ? 'bag-err' : a.level === 'warn' ? 'bag-warn' : 'bag-ok'}`}>
+              {a.source}
+            </span>
+            <span style={{ minWidth: 0 }}>{a.message}</span>
+            <span className="v thin">{new Date(a.at).toLocaleString()}</span>
+          </div>
+        ))}
+      </div>
     </section>
   )
 }
