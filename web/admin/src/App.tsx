@@ -71,13 +71,14 @@ const LEGACY_ROUTES: Record<string, Route> = {
   questions: 'reviews',
   status: 'status',
   billing: 'billing',
-  operator: 'operator',
+  widget: 'widget',
   showcase: 'widget',
   editor: 'widget',
   embed: 'widget',
   'widget/showcase': 'widget',
   'widget/editor': 'widget',
   'widget/embed': 'widget',
+  operator: 'operator',
   settings: 'settings',
   marketplaces: 'marketplaces',
   'settings/general': 'settings',
@@ -89,7 +90,6 @@ function currentRoute(): Route {
   if (raw in LEGACY_ROUTES) return LEGACY_ROUTES[raw]
   return 'dashboard'
 }
-
 async function postAuth(path: string, body: unknown) {
   const res = await fetch(path, {
     method: 'POST',
@@ -129,6 +129,15 @@ function plural(n: number, forms: [string, string, string]) {
   if (mod10 === 1 && mod100 !== 11) return forms[0]
   if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return forms[1]
   return forms[2]
+}
+
+// Sidebar nav is derived from mode/hasOperator — plain computation, never a
+// hook: this function is called after early returns in App (loading/auth),
+// and a conditional useMemo here throws "Rendered fewer hooks" (#310).
+function buildNav(hasOperator: boolean): NavGroup[] {
+  const groups = NAV.map((g) => ({ ...g, items: [...g.items] }))
+  if (hasOperator) groups[3].items.push({ route: 'operator', label: 'SaaS', icon: 'panel' })
+  return groups
 }
 
 export default function App() {
@@ -297,12 +306,7 @@ export default function App() {
     )
   }
 
-  const nav = useMemo(() => {
-    const groups = NAV.map((g) => ({ ...g, items: [...g.items] }))
-    if (hasOperator) groups[3].items.push({ route: 'operator', label: 'SaaS', icon: 'panel' })
-    return groups
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasOperator])
+  const nav = buildNav(hasOperator)
 
   const page = (
     <>
