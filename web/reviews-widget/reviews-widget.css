@@ -2431,17 +2431,40 @@ button.rw-dist-row:hover span:last-child {
 
 	.rw-answer {
 	  padding: 12px 14px;
-	  border: 1px solid #d9e7dd;
-  border-left: 3px solid var(--rw-trust);
+	  border: 1px solid var(--rw-ans-border, #d9e7dd);
+  border-left: 3px solid var(--rw-ans, var(--rw-trust));
   border-radius: 12px;
-  background: var(--rw-trust-tint);
+  background: var(--rw-ans-tint, var(--rw-trust-tint));
+}
+
+.rw-answer[data-ans-style="plain"] {
+  padding: 10px 0 0;
+  border: 0;
+  border-top: 1px dashed var(--rw-ans-border, #d9e7dd);
+  border-radius: 0;
+  background: none;
+}
+
+.rw-answer[data-ans-style="bubble"] {
+  border-left-width: 1px;
+  border-radius: 16px;
+}
+
+.rw-answer[data-ans-style="accent"] {
+  border-color: color-mix(in srgb, var(--rw-accent) 30%, var(--rw-border));
+  border-left-color: var(--rw-accent);
+  background: color-mix(in srgb, var(--rw-accent) 10%, var(--rw-panel));
 }
 
 .rw-answer-title {
   margin: 0 0 4px;
-  color: var(--rw-trust);
+  color: var(--rw-ans, var(--rw-trust));
   font-size: 13px;
   font-weight: 600;
+}
+
+.rw-answer[data-ans-style="accent"] .rw-answer-title {
+  color: var(--rw-accent);
 }
 
 .rw-answer p {
@@ -3067,6 +3090,123 @@ button.rw-dist-row:hover span:last-child {
   border-top: 1px solid var(--rw-border);
   padding-top: 20px;
   margin-top: 8px;
+}
+
+/* ── Этап 2 редизайна: минимальный хром просмотрщика, раскладка шапки,
+   фильтры, тёмная тема ─────────────────────────────────────────────── */
+
+/* min-хром: топ-панель не рендерится, стек full-bleed, стеклянные кнопки. */
+.rw-media-dialog-min {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.rw-media-dialog-min .rw-media-stage {
+  padding: 0;
+}
+
+.rw-media-dialog-min .rw-media-close-float {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(8px);
+  color: #ffffff;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.rw-media-dialog-min .rw-media-nav {
+  border: 0;
+  background: rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(8px);
+}
+
+/* Схема шапки: стопка / центр поверх сетки .rw-overview. */
+.reviews-widget.rw-head-stack .rw-overview {
+  grid-template-columns: 1fr;
+  justify-items: start;
+  text-align: left;
+}
+
+.reviews-widget.rw-head-center .rw-overview {
+  grid-template-columns: 1fr;
+  justify-items: center;
+  text-align: center;
+}
+
+/* Кастомные фильтры: сворачиваемая панель, дропдауны, чипы. */
+.rw-filters-toggle {
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--rw-border);
+  border-radius: 12px;
+  background: var(--rw-panel);
+  color: var(--rw-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 15px;
+}
+
+.rw-filters-toggle:hover {
+  border-color: var(--rw-accent-hover);
+  background: var(--rw-accent-tint, var(--rw-soft));
+}
+
+.rw-filters-body[hidden] {
+  display: none;
+}
+
+.rw-filter-select {
+  min-height: 38px;
+  max-width: 100%;
+  padding: 0 10px;
+  border: 1px solid var(--rw-border);
+  border-radius: 10px;
+  background: var(--rw-panel);
+  color: var(--rw-text);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.rw-filter-select:focus-visible {
+  border-color: var(--rw-accent);
+  outline: 2px solid color-mix(in srgb, var(--rw-accent) 30%, transparent);
+  outline-offset: 0;
+}
+
+.rw-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.rw-filter-chip {
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--rw-border);
+  border-radius: 999px;
+  background: var(--rw-panel);
+  color: var(--rw-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+}
+
+.rw-filter-chip[aria-pressed="true"] {
+  border-color: var(--rw-accent);
+  background: var(--rw-accent);
+  color: var(--rw-accent-ink);
+}
+
+/* Тёмная тема: точечные оверрайды мест со светлым фоном. */
+.reviews-widget.rw-dark .rw-qa-answer {
+  background: color-mix(in srgb, var(--rw-accent) 14%, var(--rw-panel));
 }
 
 @media (prefers-reduced-motion: reduce) {

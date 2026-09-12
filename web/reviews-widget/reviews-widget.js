@@ -222,6 +222,7 @@
       rating: "all",
       mediaFilter: "all",
       customFilters: {},
+      customFiltersOpen: false,
       sort: options.initialSort || config.defaults.initialSort || "newest",
       visible: initialVisible(config),
       expanded: true,
@@ -418,18 +419,22 @@
     viewer.hidden = true;
     viewer.setAttribute("aria-hidden", "true");
     viewer.setAttribute("data-role", "media-viewer");
+    const viewerCfg = config.viewer || defaultConfig.viewer;
+    const viewerMin = viewerCfg.chrome === "min";
     viewer.innerHTML = `
       <div class="rw-media-viewer-backdrop" data-role="viewer-close"></div>
       <div class="rw-media-dialog" role="dialog" aria-modal="true" aria-label="Просмотр медиа отзыва">
-        <div class="rw-media-dialog-top">
-          <div class="rw-media-dialog-caption" data-role="viewer-caption"></div>
-          <a class="rw-media-original" data-role="viewer-original" href="#" target="_blank" rel="noreferrer">Открыть оригинал</a>
-          <button class="rw-media-close" type="button" data-role="viewer-close" aria-label="Закрыть просмотр">×</button>
-        </div>
+        ${viewerMin
+          ? `<button class="rw-media-close rw-media-close-float" type="button" data-role="viewer-close" aria-label="Закрыть просмотр">×</button>`
+          : `<div class="rw-media-dialog-top">
+              <div class="rw-media-dialog-caption" data-role="viewer-caption"></div>
+              ${viewerCfg.showOriginal === false ? "" : `<a class="rw-media-original" data-role="viewer-original" href="#" target="_blank" rel="noreferrer">Открыть оригинал</a>`}
+              <button class="rw-media-close" type="button" data-role="viewer-close" aria-label="Закрыть просмотр">×</button>
+            </div>`}
         <button class="rw-media-nav rw-media-prev" type="button" data-role="viewer-prev" aria-label="Предыдущее медиа">‹</button>
         <div class="rw-media-stage" data-role="viewer-stage"></div>
         <button class="rw-media-nav rw-media-next" type="button" data-role="viewer-next" aria-label="Следующее медиа">›</button>
-        <div class="rw-media-counter" data-role="viewer-counter"></div>
+        ${viewerCfg.showCounter === false || viewerMin ? "" : `<div class="rw-media-counter" data-role="viewer-counter"></div>`}
       </div>
     `;
 
@@ -800,39 +805,139 @@
         render(root, state);
       }));
     });
-    renderCustomFilterSegments(root, state, reviews);
+    renderCustomFilters(root, state, reviews);
   }
 
   // Public custom-attribute filters: only fields the admin marked filterable,
   // and only values actually observed on the (defaults-matching) reviews.
-  function renderCustomFilterSegments(root, state, reviews) {
+  // Layout, collapsible body, multiSelect and label wording come from config.filters.
+  function renderCustomFilters(root, state, reviews) {
     const customRoot = root.querySelector('[data-role="custom-filters"]');
-    customRoot.innerHTML = "";
+    if (!customRoot) return;
+    const fcfg = state.config.filters;
+    const plain = fcfg.labelMode === "plain";
     const source = reviews.filter((review) => matchesDefaults(review, state.config.defaults));
+    const fields = [];
     (state.config.customFields || []).forEach((field) => {
       if (!field.filterable) return;
       const values = unique(source.map((review) => reviewCustomValue(review, field.id)).filter((value) => value !== "" && value != null));
       if (values.length < 2) return;
+      fields.push({ field, values });
+    });
+    customRoot.innerHTML = "";
+    if (!fields.length) return;
+
+    const activeCount = Object.keys(state.customFilters).length;
+    let body = customRoot;
+    if (fcfg.collapsible) {
+      const toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "rw-filters-toggle";
+      toggle.setAttribute("aria-expanded", String(state.customFiltersOpen));
+      toggle.textContent = `Фильтры · ${activeCount} активны`;
+      toggle.addEventListener("click", () => {
+        state.customFiltersOpen = !state.customFiltersOpen;
+        render(root, state);
+      });
+      customRoot.appendChild(toggle);
+      body = document.createElement("div");
+      body.className = "rw-filters-body";
+      body.hidden = !state.customFiltersOpen;
+      customRoot.appendChild(body);
+    }
+
+    if (fcfg.layout === "chips") {
+      const ribbon = document.createElement("div");
+      ribbon.className = "rw-filter-chips";
+      fields.forEach(({ field, values }) => {
+        values.forEach((value) => {
+          const chip = document.createElement("button");
+          chip.type = "button";
+          chip.className = "rw-filter-chip";
+          chip.textContent = value;
+          chip.setAttribute("aria-pressed", String(isCustomValueSelected(state, field.id, value)));
+          chip.addEventListener("click", () => {
+            setCustomFilter(state, field.id, value);
+            render(root, state);
+          });
+          ribbon.appendChild(chip);
+        });
+      });
+      body.appendChild(ribbon);
+      return;
+    }
+
+    fields.forEach(({ field, values }) => {
+      if (fcfg.layout === "dropdowns") {
+        const select = document.createElement("select");
+        select.className = "rw-filter-select";
+        select.setAttribute("aria-label", field.label);
+        const resetLabel = plain ? field.label : `${field.label}: все`;
+        const current = customFilterValues(state, field.id);
+        select.appendChild(new Option(resetLabel, "all", false, current.length === 0));
+        values.forEach((value) => {
+          select.appendChild(new Option(value, value, false, current.includes(value)));
+        });
+        select.addEventListener("change", () => {
+          setCustomFilter(state, field.id, select.value);
+          render(root, state);
+        });
+        body.appendChild(select);
+        return;
+      }
       const group = document.createElement("div");
       group.className = "rw-segments";
       group.setAttribute("aria-label", field.label);
-      const selected = state.customFilters[field.id] || "all";
-      group.appendChild(segmentButton(`Все: ${field.label}`, selected === "all", () => {
+      group.appendChild(segmentButton(plain ? field.label : `Все: ${field.label}`, !isCustomFilterActive(state, field.id), () => {
         setCustomFilter(state, field.id, "all");
         render(root, state);
       }));
       values.forEach((value) => {
-        group.appendChild(segmentButton(value, selected === value, () => {
-          setCustomFilter(state, field.id, selected === value ? "all" : value);
+        group.appendChild(segmentButton(value, isCustomValueSelected(state, field.id, value), () => {
+          if (isCustomValueSelected(state, field.id, value)) {
+            setCustomFilter(state, field.id, "all");
+          } else {
+            setCustomFilter(state, field.id, value);
+          }
           render(root, state);
         }));
       });
-      customRoot.appendChild(group);
+      body.appendChild(group);
     });
   }
 
+  function customFilterValues(state, id) {
+    const value = state.customFilters[id];
+    return Array.isArray(value) ? value : value ? [value] : [];
+  }
+
+  function isCustomFilterActive(state, id) {
+    return customFilterValues(state, id).length > 0;
+  }
+
+  function isCustomValueSelected(state, id, value) {
+    return customFilterValues(state, id).includes(value);
+  }
+
   function setCustomFilter(state, id, value) {
-    if (value === "all") {
+    if (state.config.filters.multiSelect) {
+      const list = customFilterValues(state, id);
+      if (value === "all") {
+        delete state.customFilters[id];
+      } else {
+        const index = list.indexOf(value);
+        if (index >= 0) {
+          list.splice(index, 1);
+        } else {
+          list.push(value);
+        }
+        if (list.length) {
+          state.customFilters[id] = list;
+        } else {
+          delete state.customFilters[id];
+        }
+      }
+    } else if (value === "all") {
       delete state.customFilters[id];
     } else {
       state.customFilters[id] = value;
@@ -848,10 +953,13 @@
 
   function customMatches(review, filters) {
     for (const id in filters) {
-      if (reviewCustomValue(review, id) !== filters[id]) return false;
+      const want = filters[id];
+      const value = reviewCustomValue(review, id);
+      if (Array.isArray(want) ? !want.includes(value) : value !== want) return false;
     }
     return true;
   }
+
   function renderDistribution(root, reviews) {
     const distRoot = root.querySelector('[data-role="distribution"]');
     if (!distRoot) return;
@@ -1288,12 +1396,19 @@
     const canShowImage = item.kind !== "video" || item.previewUrl || isLikelyImageURL(item.url);
     const rawViewerSrc = item.kind === "video" ? item.previewUrl || item.url : item.url || item.previewUrl;
     const viewerSrc = item.kind === "video" ? rawViewerSrc : mediaProxyURL(rawViewerSrc, root.__reviewsProxyBase);
-    caption.textContent = item.caption || (item.kind === "video" ? "Видео отзыва" : "Фото отзыва");
-    original.href = item.url;
-    original.textContent = item.kind === "video" ? "Открыть видео" : "Открыть оригинал";
-    counter.textContent = `${viewer.__index + 1} / ${items.length}`;
-    prev.hidden = items.length < 2;
-    next.hidden = items.length < 2;
+    const captionText = item.caption || (item.kind === "video" ? "Видео отзыва" : "Фото отзыва");
+    if (caption) {
+      caption.textContent = captionText;
+    }
+    if (original) {
+      original.href = item.url;
+      original.textContent = item.kind === "video" ? "Открыть видео" : "Открыть оригинал";
+    }
+    if (counter) {
+      counter.textContent = `${viewer.__index + 1} / ${items.length}`;
+    }
+    if (prev) prev.hidden = items.length < 2;
+    if (next) next.hidden = items.length < 2;
     const viewerVideoAttrs = (() => {
       const videoConfig = root.__reviewsWidgetConfig && root.__reviewsWidgetConfig.layout.video;
       return videoConfig && videoConfig.autoplayInViewer === false ? "" : " autoplay muted";
@@ -1303,11 +1418,11 @@
     stage.innerHTML = panel
       ? `<div class="rw-media-viewer-with-panel">${panel.mediaHTML}${panel.html}</div>`
       : embedSrc
-      ? `<iframe class="rw-media-viewer-embed" src="${escapeAttribute(embedSrc)}" title="${escapeAttribute(caption.textContent)}" loading="lazy" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" allowfullscreen></iframe>`
+      ? `<iframe class="rw-media-viewer-embed" src="${escapeAttribute(embedSrc)}" title="${escapeAttribute(captionText)}" loading="lazy" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" allowfullscreen></iframe>`
       : canPlayVideo
       ? `<video class="rw-media-viewer-video" src="${escapeAttribute(item.url)}" controls playsinline${viewerVideoAttrs}></video>`
       : canShowImage ? `
-        <img class="rw-media-viewer-image" src="${escapeAttribute(viewerSrc)}" alt="${escapeAttribute(caption.textContent)}" />
+        <img class="rw-media-viewer-image" src="${escapeAttribute(viewerSrc)}" alt="${escapeAttribute(captionText)}" />
         ${item.kind === "video" ? '<span class="rw-media-viewer-play" aria-hidden="true"></span>' : ""}
       `
         : `<a class="rw-media-viewer-placeholder" href="${escapeAttribute(item.url)}" target="_blank" rel="noreferrer">Открыть медиа</a>`;
