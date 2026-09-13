@@ -20,3 +20,9 @@ coverage.out
 # Private business docs (kept out of the public repo)
 docs/superpowers/plans/
 docs/superpowers/specs/
+
+# Landing (markerview.ru): private — contains seller requisites and the public offer
+/landing/
+
+# SDD worktrees
+/.worktrees/
