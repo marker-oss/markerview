@@ -23,19 +23,41 @@ func TestToReview_WBMapping(t *testing.T) {
 		ExternalProductID: "70476012",
 		SellerArticle:     "1523",
 		Rating:            ptrInt(5),
+		Title:             "Отличная покупка",
 		AuthorName:        "Мария",
 		Text:              "Отличная ткань",
 		CreatedAtMP:       time.Date(2026, 5, 28, 12, 20, 0, 0, time.UTC),
 		MPAnswerText:      ptrStr("Спасибо"),
 		MPAnswerState:     ptrStr("published"),
+		ProductName:       "Платье вечернее",
+		ProductPrice:      "1 799 ₽",
 		Media: []store.ReviewMedia{
-			{Kind: "photo", URL: "https://cdn/p1.jpg", Position: 0},
+			{Kind: "photo", URL: "https://cdn/p1.jpg", Position: 0, Likes: 7},
+			{Kind: "video", URL: "https://cdn/v1.m3u8", PreviewURL: ptrStr("https://cdn/v1.png"), Position: 1, Duration: 12.5},
 		},
 	}
 
 	out := mapper.ToReview(r)
-	if len(out.Media) != 1 || out.Media[0].Kind != "photo" {
+	if len(out.Media) != 2 || out.Media[0].Kind != "photo" {
 		t.Fatalf("media = %+v", out.Media)
+	}
+	if out.Title != "Отличная покупка" {
+		t.Fatalf("title = %q", out.Title)
+	}
+	if out.Product == nil || out.Product.Name != "Платье вечернее" || out.Product.Price != "1 799 ₽" {
+		t.Fatalf("product = %+v", out.Product)
+	}
+	if out.Media[0].Likes != 7 {
+		t.Fatalf("photo likes = %d", out.Media[0].Likes)
+	}
+	if out.Media[1].Duration != 12.5 {
+		t.Fatalf("video duration = %v", out.Media[1].Duration)
+	}
+
+	// No product data -> JSON field absent.
+	empty := mapper.ToReview(store.Review{Marketplace: "wb", ExternalReviewID: "wb-2"})
+	if empty.Product != nil {
+		t.Fatalf("product should be nil, got %+v", empty.Product)
 	}
 }
 

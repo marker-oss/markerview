@@ -31,7 +31,33 @@ const (
 	maxCustomFields    = 6
 	maxCustomOptions   = 12
 	maxCustomStrLen    = 60
+	maxSubmissionTitle = 512
 )
+
+// cleanSubmissionTitle normalizes the optional review title: trim, drop
+// control characters (newlines collapse to a single space), collapse
+// repeated spaces. Empty result means the field is simply not stored.
+func cleanSubmissionTitle(raw string) string {
+	var b strings.Builder
+	b.Grow(len(raw))
+	space := false
+	for _, r := range raw {
+		if r < 0x20 || r == 0x7f {
+			space = true
+			continue
+		}
+		if r == ' ' {
+			space = true
+			continue
+		}
+		if space && b.Len() > 0 {
+			b.WriteByte(' ')
+		}
+		space = false
+		b.WriteRune(r)
+	}
+	return b.String()
+}
 
 // customField describes one extra selectable parameter on the review form
 // (товарные атрибуты вида "рост / вес / посадка").
@@ -301,6 +327,13 @@ func (s *Server) handleCreateReviewSubmission(w http.ResponseWriter, r *http.Req
 		writeError(w, http.StatusBadRequest, errors.New("review text is required"))
 		return
 	}
+	// Optional review title (W34): trimmed, control characters stripped like
+	// the other text fields, capped at 512 chars; empty/absent = not stored.
+	title := cleanSubmissionTitle(r.FormValue("title"))
+	if len(title) > maxSubmissionTitle {
+		writeError(w, http.StatusBadRequest, errors.New("title must be at most 512 characters"))
+		return
+	}
 	customData, err := customAnswersFromForm(r.FormValue("custom"), s.customFields(r.Context()))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
@@ -339,6 +372,7 @@ func (s *Server) handleCreateReviewSubmission(w http.ResponseWriter, r *http.Req
 		ExternalReviewID: "site-" + token,
 		SellerArticle:    sellerArticle,
 		Rating:           rating,
+		Title:            title,
 		AuthorName:       authorName,
 		AuthorEmail:      authorEmail,
 		Text:             text,

@@ -186,6 +186,7 @@ func (s *Server) handler() http.Handler {
 	mux.HandleFunc("GET /api/questions", s.handlePublicQuestions)
 	mux.HandleFunc("GET /api/question-submission-config", s.handleQuestionSubmissionConfig)
 	mux.HandleFunc("POST /api/questions", s.handleCreateQuestionSubmission)
+	mux.HandleFunc("GET /api/preview-page", s.handlePreviewPage)
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
 	mux.HandleFunc("GET /user-media/{token}", s.handleUserMedia)
 	if mediaHandler, err := mediaproxy.NewHandler(s.cfg.Media, nil); err == nil {

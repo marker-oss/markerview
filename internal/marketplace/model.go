@@ -11,6 +11,7 @@ type Review struct {
 	ExternalProductID string
 	SellerArticle     string
 	Rating            *int
+	Title             string
 	AuthorName        string
 	Text              string
 	Pros              string
@@ -19,7 +20,12 @@ type Review struct {
 	UpdatedAtMP       *time.Time
 	Answer            *Answer
 	Media             []Media
-	Raw               []byte
+	ProductName       string // raw product title from the marketplace payload
+	ProductPrice      string // raw price string from the marketplace payload, e.g. "1 799 ₽"
+	// Recommend is the marketplace per-review "recommended" flag (YM). Used
+	// only for aggregate recommendPercent; zero value = unknown/absent.
+	Recommend bool
+	Raw       []byte
 }
 
 type Media struct {
@@ -27,6 +33,8 @@ type Media struct {
 	URL        string
 	PreviewURL string
 	Position   int
+	Likes      int
+	Duration   float64
 }
 
 type Answer struct {

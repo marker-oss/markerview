@@ -190,6 +190,7 @@ type wbFeedbacksData struct {
 type wbFeedback struct {
 	ID               string           `json:"id"`
 	Text             string           `json:"text"`
+	Title            string           `json:"title"`
 	Pros             string           `json:"pros"`
 	Cons             string           `json:"cons"`
 	ProductValuation int              `json:"productValuation"`
@@ -198,7 +199,13 @@ type wbFeedback struct {
 	ProductDetails   wbProductDetails `json:"productDetails"`
 	PhotoLinks       []wbPhotoLink    `json:"photoLinks"`
 	Video            *wbVideo         `json:"video"`
-	UserName         string           `json:"userName"`
+	// videoDuration and price are not in the verified WB seller-API schema;
+	// parsed defensively so a field appearing later costs nothing (0/"" =
+	// unknown). likes is the WB "полезно" counter, same defensive stance.
+	LikesCount    int     `json:"likesCount"`
+	ProductPrice  string  `json:"productPrice"`
+	VideoDuration float64 `json:"videoDuration"`
+	UserName      string  `json:"userName"`
 }
 
 type wbAnswer struct {
@@ -209,6 +216,7 @@ type wbAnswer struct {
 type wbProductDetails struct {
 	NMID            int64  `json:"nmId"`
 	SupplierArticle string `json:"supplierArticle"`
+	ProductName     string `json:"productName"`
 }
 
 type wbPhotoLink struct {
@@ -251,6 +259,7 @@ func (f wbFeedback) toReview() (marketplace.Review, error) {
 			URL:        photo.FullSize,
 			PreviewURL: photo.MiniSize,
 			Position:   i,
+			Likes:      f.LikesCount,
 		})
 	}
 	if f.Video != nil && f.Video.Link != "" {
@@ -259,6 +268,7 @@ func (f wbFeedback) toReview() (marketplace.Review, error) {
 			URL:        f.Video.Link,
 			PreviewURL: f.Video.PreviewImage,
 			Position:   len(media),
+			Duration:   f.VideoDuration,
 		})
 	}
 
@@ -268,6 +278,7 @@ func (f wbFeedback) toReview() (marketplace.Review, error) {
 		ExternalProductID: f.externalProductID(),
 		SellerArticle:     f.ProductDetails.SupplierArticle,
 		Rating:            &rating,
+		Title:             f.Title,
 		AuthorName:        f.UserName,
 		Text:              f.Text,
 		Pros:              f.Pros,
@@ -275,6 +286,8 @@ func (f wbFeedback) toReview() (marketplace.Review, error) {
 		CreatedAtMP:       createdAt,
 		Answer:            answer,
 		Media:             media,
+		ProductName:       f.ProductDetails.ProductName,
+		ProductPrice:      f.ProductPrice,
 		Raw:               raw,
 	}, nil
 }

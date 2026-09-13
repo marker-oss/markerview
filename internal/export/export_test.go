@@ -109,6 +109,25 @@ func TestBuildBundlesOrdersPinnedArticleReviewsFirst(t *testing.T) {
 	}
 }
 
+func TestBuildBundlesComputesRecommendPercent(t *testing.T) {
+	reviews := []store.Review{
+		{Marketplace: "wb", ExternalReviewID: "r1", SellerArticle: "107", Rating: ptrInt(5), CreatedAtMP: time.Unix(3, 0)},
+		{Marketplace: "wb", ExternalReviewID: "r2", SellerArticle: "107", Rating: ptrInt(4), CreatedAtMP: time.Unix(2, 0)},
+		{Marketplace: "wb", ExternalReviewID: "r3", SellerArticle: "107", Rating: ptrInt(2), CreatedAtMP: time.Unix(1, 0)},
+		{Marketplace: "wb", ExternalReviewID: "r4", SellerArticle: "107", CreatedAtMP: time.Unix(0, 0)}, // unrated
+	}
+	mapper := reviewjson.Mapper{}
+	bundles := BuildBundles(reviews, mapper)
+	agg := bundles["107"].Aggregate
+	// integer truncation: 66.67 -> 66
+	if agg.RecommendPercent != 66 {
+		t.Fatalf("recommendPercent = %d, want 66 (2 of 3 rated)", agg.RecommendPercent)
+	}
+	if agg.Count != 4 || agg.RatingCount != 3 {
+		t.Fatalf("aggregate = %+v", agg)
+	}
+}
+
 func TestWriteProducesFiles(t *testing.T) {
 	dir := t.TempDir()
 	reviews := []store.Review{

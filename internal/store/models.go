@@ -47,6 +47,7 @@ type Review struct {
 	ReviewerIdentityID *uint
 	ReviewerIdentity   *ReviewerIdentity
 	Rating             *int
+	Title              string `gorm:"size:512"`
 	AuthorName         string
 	Text               string
 	Pros               string
@@ -73,6 +74,8 @@ type Review struct {
 	AntispamReason     string `gorm:"size:256"`
 	Raw                string
 	CustomData         string    `gorm:"type:text"`
+	ProductName        string    `gorm:"size:512"` // raw product name as reported by the marketplace
+	ProductPrice       string    `gorm:"size:128"` // raw price string as reported by the marketplace, e.g. "1 799 ₽"
 	FetchedAt          time.Time `gorm:"not null"`
 	UpdatedAt          time.Time
 	Media              []ReviewMedia `gorm:"foreignKey:ReviewID"`
@@ -101,6 +104,8 @@ type ReviewMedia struct {
 	SizeBytes   int64
 	AccessToken string `gorm:"size:64;index"`
 	Position    int
+	Likes       int     `gorm:"not null;default:0"` // marketplace "useful" counter; static, no public POST
+	Duration    float64 `gorm:"not null;default:0"` // video length in seconds; 0 = unknown
 
 	// EmbedProvider/EmbedID mark a media row as a social embed (VK/YouTube);
 	// zero values keep the plain photo/video URL semantics.
