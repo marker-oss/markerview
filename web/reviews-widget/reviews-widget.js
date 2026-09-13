@@ -9,10 +9,10 @@
     theme: {
       accent: "#68478D",
       accentInk: "#ffffff",
-      text: "#09090B",
-      muted: "#52525B",
+      text: "#2A2630",
+      muted: "#6E6877",
       panel: "#ffffff",
-      border: "#E4E4E7",
+      border: "#E7DFD7",
       star: "#C99A3F",
       dark: false,
     },
@@ -21,7 +21,7 @@
       viewAllHref: "",
     },
     typography: {
-      fontFamily: 'Onest, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+      fontFamily: "",
       inheritSite: false,
       scale: 1,
       radius: 16,
@@ -31,8 +31,23 @@
       mode: "list",
       columns: 2,
       pageSize: 3,
-      sections: ["summary", "media", "filters", "list", "form"],
+      sections: ["summary", "player", "media", "filters", "list", "form"],
       pagination: "more",
+      mediacard: {
+        layout: "row",
+        aspect: "16:10",
+        maxTiles: 4,
+        plusMore: true,
+      },
+      player: {
+        enabled: true,
+        title: "Видео покупателей",
+        tile: { aspect: "9:16", width: 156 },
+        showAuthor: true,
+        showLikes: true,
+        showSourceBadge: true,
+        autoAdvance: { enabled: true, intervalSec: 5, pauseOnHover: true },
+      },
       wall: {
         minTileWidth: 200,
         gap: 12,
@@ -40,7 +55,7 @@
       },
       video: {
         aspect: "9:16",
-        tileWidth: 260,
+        tileWidth: 156,
         showSourceBadge: true,
         showAuthor: true,
         autoplayInViewer: true,
@@ -51,6 +66,7 @@
     header: {
       title: "Отзывы покупателей",
       layout: "row",
+      elements: { title: true, rating: true, count: true, recommend: true, distribution: true },
     },
     answers: {
       style: "card",
@@ -68,6 +84,19 @@
       collapsible: false,
       multiSelect: false,
       labelMode: "all",
+    },
+    form: {
+      mode: "inline",
+      title: "Оставить отзыв",
+      submitLabel: "Отправить отзыв",
+      fields: { title: true, email: true, media: true },
+      maxMedia: 3,
+      mediaHint: "Фото до 8 МБ · видео до 50 МБ",
+      cta: { text: "Оставить отзыв", hint: "Помогите другим покупателям — оценка, текст, фото или видео" },
+    },
+    customTags: {
+      display: "chips",
+      chipLabel: true,
     },
     visibility: {
       photos: true,
@@ -116,89 +145,164 @@
       externalReviewId: "wb-1001",
       externalProductId: "70476012",
       sellerArticle: "1523",
+      title: "Платье как на модели",
+      product: { name: "Платье миди «Аметист»", price: "4 590 ₽" },
       marketplaceReviewUrl: "https://www.wildberries.ru/catalog/70476012/detail.aspx#comments",
       marketplaceProductUrl: "https://www.wildberries.ru/catalog/70476012/detail.aspx",
       sellerProductUrl: "https://example-shop.test/search?query=1523",
       rating: 5,
-      authorName: "Мария К.",
-      text: "Платье село по фигуре, ткань приятная и не просвечивает. Дома спокойно примерила и оставила без сомнений.",
-      pros: "Аккуратная посадка, ровные швы",
+      authorName: "Юлиана",
+      text: "Платье село идеально, цвет как на фото у покупательниц. Ткань плотная, не просвечивает.",
+      pros: "Плюсы: посадка, ткань",
       cons: "",
       createdAt: "2026-05-28T12:20:00+03:00",
+      custom: { height: "164", size: "46" },
       media: [
-        { kind: "photo", url: "./assets/review-fabric.svg" },
-        { kind: "photo", url: "./assets/review-outfit.svg" },
+        { kind: "video", url: "./assets/demo-review-1.mp4", previewUrl: "./assets/review-video.svg", likes: 124, duration: 24 },
+        { kind: "photo", url: "./assets/review-fabric.svg", likes: 0, duration: 0 },
+        { kind: "photo", url: "./assets/review-outfit.svg", likes: 0, duration: 0 },
       ],
       answer: {
-        text: "Мария, спасибо за отзыв. Рады, что платье подошло и примерка прошла спокойно.",
+        text: "Спасибо, Юлиана! Носите с удовольствием.",
         state: "published",
       },
+    },
+    {
+      marketplace: "ozon",
+      externalReviewId: "oz-772",
+      sellerArticle: "1523",
+      title: "Примерка на видео",
+      product: { name: "Платье миди «Аметист»", price: "4 590 ₽" },
+      rating: 4,
+      authorName: "Марина",
+      text: "Сняла видео примерки: село по фигуре, не тянет в плечах. Вторая неделя носки — складки не мнутся.",
+      pros: "",
+      cons: "",
+      createdAt: "2026-05-27T18:30:00+03:00",
+      custom: { height: "170" },
+      media: [{ kind: "video", url: "./assets/demo-review-2.mp4", previewUrl: "./assets/review-video.svg", likes: 86, duration: 31 }],
+      answer: null,
     },
     {
       marketplace: "ym",
       externalReviewId: "ym-2107",
       externalProductId: "SKU-2107",
       sellerArticle: "2107",
+      product: { name: "Платье миди «Аметист»", price: "4 590 ₽" },
       marketplaceReviewUrl: "",
       marketplaceProductUrl: "",
       sellerProductUrl: "./product.html?article=SKU-2107&marketplace=ym",
-      rating: 4,
-      authorName: "Елена",
-      text: "Заказывала к семейному вечеру. Цвет мягкий, длина удобная, но рукав оказался чуть плотнее, чем я ожидала.",
-      pros: "Красивый оттенок, хорошая длина",
-      cons: "Рукав сидит плотно",
-      createdAt: "2026-05-22T09:10:00+03:00",
-      media: [{ kind: "photo", url: "./assets/review-label.svg" }],
-      answer: null,
+      rating: 5,
+      authorName: "Дарья",
+      text: "Подкладка не сбивается, швы ровные. Беру второе платье, теперь в синем.",
+      pros: "Плюсы: подкладка, швы",
+      cons: "",
+      createdAt: "2026-05-27T09:10:00+03:00",
+      custom: { size: "44" },
+      media: [],
+      answer: {
+        text: "Спасибо, Дарья! Носите с удовольствием.",
+        state: "published",
+      },
     },
     {
       marketplace: "wb",
-      externalReviewId: "wb-1002",
+      externalReviewId: "wb-1003",
       externalProductId: "70476012",
       sellerArticle: "1523",
+      product: { name: "Платье миди «Аметист»", price: "4 590 ₽" },
       marketplaceReviewUrl: "https://www.wildberries.ru/catalog/70476012/detail.aspx#comments",
       marketplaceProductUrl: "https://www.wildberries.ru/catalog/70476012/detail.aspx",
       sellerProductUrl: "https://example-shop.test/search?query=1523",
       rating: 5,
-      authorName: "Наталья Ф.",
-      text: "На рост 164 длина хорошая, можно и на работу, и в гости. После стирки форма осталась прежней.",
-      pros: "Держит форму",
+      authorName: "Ирина",
+      text: "Взяла после того, как увидела фото в галерее — сразу видно, как сидит оттенок.",
+      pros: "",
       cons: "",
-      createdAt: "2026-05-18T17:42:00+03:00",
-      media: [],
-      answer: {
-        text: "Спасибо, Наталья. Носите с удовольствием.",
-        state: "published",
-      },
+      createdAt: "2026-05-26T17:42:00+03:00",
+      custom: { height: "158" },
+      media: [
+        { kind: "photo", url: "./assets/review-outfit.svg", likes: 96, duration: 0 },
+        { kind: "photo", url: "./assets/review-fabric.svg", likes: 0, duration: 0 },
+      ],
+      answer: null,
     },
     {
       marketplace: "ozon",
       externalReviewId: "oz-771",
       rating: 3,
-      authorName: "Ирина",
+      authorName: "Вера",
       sellerArticle: "771",
+      product: { name: "Платье миди «Аметист»", price: "4 590 ₽" },
       marketplaceReviewUrl: "",
       marketplaceProductUrl: "",
-      media: [{ kind: "video", url: "./assets/demo-review-1.mp4", previewUrl: "./assets/review-video.svg" }],
-      text: "Качество пошива хорошее, но оттенок вживую чуть теплее, чем на фото. Оставила, потому что к лицу подошло.",
-      pros: "Качество пошива",
-      cons: "Оттенок отличается",
-      createdAt: "2026-05-12T20:05:00+03:00",
+      media: [{ kind: "photo", url: "./assets/review-label.svg", likes: 12, duration: 0 }],
+      text: "Пришло быстро, но цвет чуть темнее, чем на фото. Надеюсь, выгорит.",
+      pros: "",
+      cons: "",
+      createdAt: "2026-05-25T20:05:00+03:00",
+      custom: {},
+    },
+    {
+      marketplace: "wb",
+      externalReviewId: "wb-1004",
+      externalProductId: "70476012",
+      sellerArticle: "1523",
+      product: { name: "Платье миди «Аметист»", price: "4 590 ₽" },
+      marketplaceReviewUrl: "https://www.wildberries.ru/catalog/70476012/detail.aspx#comments",
+      marketplaceProductUrl: "https://www.wildberries.ru/catalog/70476012/detail.aspx",
+      sellerProductUrl: "https://example-shop.test/search?query=1523",
+      rating: 5,
+      authorName: "Полина",
+      text: "",
+      pros: "",
+      cons: "",
+      createdAt: "2026-05-24T14:12:00+03:00",
+      custom: { size: "46" },
+      media: [
+        { kind: "photo", url: "./assets/review-fabric.svg", likes: 74, duration: 0 },
+        { kind: "photo", url: "./assets/review-outfit.svg", likes: 0, duration: 0 },
+      ],
+      answer: null,
     },
     {
       marketplace: "ym",
-      externalReviewId: "ym-2108",
-      externalProductId: "SKU-2108",
-      sellerArticle: "2108",
+      externalReviewId: "ym-2109",
+      externalProductId: "SKU-2109",
+      sellerArticle: "2109",
+      product: { name: "Платье миди «Аметист»", price: "4 590 ₽" },
       marketplaceReviewUrl: "",
       marketplaceProductUrl: "",
-      sellerProductUrl: "./product.html?article=SKU-2108&marketplace=ym",
-      rating: 5,
-      authorName: "Ольга",
-      text: "Брала маме, размер подошёл с первой примерки. Ткань мягкая, не колется, смотрится аккуратно.",
-      pros: "Мягкая ткань, понятная размерность",
+      sellerProductUrl: "./product.html?article=SKU-2109&marketplace=ym",
+      rating: 4,
+      authorName: "Ника",
+      text: "Стрейч 8–10 см по обхвату — село как влитое на 46 размер.",
+      pros: "",
       cons: "",
-      createdAt: "2026-05-04T14:12:00+03:00",
+      createdAt: "2026-05-23T11:02:00+03:00",
+      custom: { size: "46" },
+      media: [{ kind: "photo", url: "./assets/review-label.svg", likes: 0, duration: 0 }],
+      answer: {
+        text: "Спасибо за замеры, Ника! Это полезно другим покупателям.",
+        state: "published",
+      },
+    },
+    {
+      marketplace: "wb",
+      externalReviewId: "wb-1005",
+      externalProductId: "70476012",
+      sellerArticle: "1523",
+      product: { name: "Платье миди «Аметист»", price: "4 590 ₽" },
+      marketplaceReviewUrl: "https://www.wildberries.ru/catalog/70476012/detail.aspx#comments",
+      marketplaceProductUrl: "https://www.wildberries.ru/catalog/70476012/detail.aspx",
+      sellerProductUrl: "https://example-shop.test/search?query=1523",
+      rating: 5,
+      authorName: "Соня",
+      text: "Длина миди как на модели: до середины икры при росте 168.",
+      pros: "",
+      cons: "",
+      createdAt: "2026-05-22T16:20:00+03:00",
+      custom: { height: "168" },
       media: [],
       answer: null,
     },
@@ -262,6 +366,14 @@
       searchQuery: "",
       expandedTexts: new Set(),
       moreError: "",
+      pagerPage: 0,
+      feedIndex: -1,
+      feedTimer: null,
+      feedPaused: false,
+      viewerTimer: null,
+      viewerPlaying: false,
+      formModalOpen: false,
+      formDone: false,
     };
     if (!state.fullFeedOffsetExplicit) {
       state.fullFeedOffset = state.reviews.length;
@@ -342,30 +454,35 @@
     header.setAttribute("data-section", "header");
     const showQuestions = !config || config.visibility.questions !== false;
     const labels = config.labels || {};
+    const he = config.header.elements || defaultConfig.header.elements;
     header.innerHTML = `
       <div class="rw-tabs" aria-label="Разделы отзывов">
         <button class="rw-tab is-active" type="button" data-role="tab-reviews">Отзывы <sup data-role="review-count">0</sup></button>
         ${showQuestions ? `<button class="rw-tab" type="button" data-role="tab-questions">Вопросы <sup data-role="question-count">0</sup></button>` : ""}
         <button class="rw-write-cta" type="button" data-role="write-cta" hidden>${escapeHTML(labels.writeReview || "Написать отзыв")}</button>
       </div>
+      ${he.title ? `<div class="rw-title" data-role="widget-title">${escapeHTML(config.header.title || defaultConfig.header.title)}</div>` : ""}
     `;
 
     const overview = document.createElement("div");
     overview.className = "rw-overview";
     overview.setAttribute("data-section", "summary");
+    const showScoreBlock = he.rating || he.count || he.recommend;
     overview.innerHTML = `
+      ${showScoreBlock ? `
       <div class="rw-score">
-        <div class="rw-score-value" data-role="score">0.0</div>
+        ${he.rating ? `<div class="rw-score-value" data-role="score">0.0</div>` : ""}
         <div class="rw-score-meta">
-          <div class="rw-stars" data-role="stars" aria-label="Средний рейтинг"></div>
+          ${he.rating ? `<div class="rw-stars" data-role="stars" aria-label="Средний рейтинг"></div>` : ""}
           <div class="rw-summary" data-role="summary"></div>
         </div>
-      </div>
+      </div>` : ""}
+      ${he.distribution ? `
       <div class="rw-distribution" aria-label="Сводка отзывов">
         <h2 class="rw-dist-title">${escapeHTML(productName)}</h2>
         <div class="rw-dist-list" data-role="distribution"></div>
         <div class="rw-market-counts" data-role="market-counts"></div>
-      </div>
+      </div>` : ""}
     `;
     if (config.appearance.viewAllHref) {
       const viewAll = document.createElement("div");
@@ -373,6 +490,12 @@
       viewAll.innerHTML = `<a class="rw-view-all" href="${escapeAttribute(config.appearance.viewAllHref)}" target="_blank" rel="noreferrer">${escapeHTML(labels.viewAll || "Смотреть все")}</a>`;
       overview.appendChild(viewAll);
     }
+
+    const player = document.createElement("div");
+    player.className = "rw-player-feed";
+    player.setAttribute("data-role", "player-feed");
+    player.setAttribute("data-section", "player");
+    player.hidden = true;
 
     const media = document.createElement("div");
     media.className = "rw-media-strip";
@@ -411,30 +534,54 @@
       <div class="rw-empty" data-role="status" hidden></div>
       <div class="rw-footer">
         <button class="rw-load-more" type="button" data-role="load-more">Показать ещё</button>
+        <nav class="rw-pager" data-role="pager" hidden aria-label="Страницы отзывов"></nav>
       </div>
     `;
 
-    const viewer = document.createElement("div");
+    const viewer = document.createElement("dialog");
     viewer.className = "rw-media-viewer";
-    viewer.hidden = true;
-    viewer.setAttribute("aria-hidden", "true");
     viewer.setAttribute("data-role", "media-viewer");
     const viewerCfg = config.viewer || defaultConfig.viewer;
     const viewerMin = viewerCfg.chrome === "min";
     viewer.innerHTML = `
-      <div class="rw-media-viewer-backdrop" data-role="viewer-close"></div>
-      <div class="rw-media-dialog" role="dialog" aria-modal="true" aria-label="Просмотр медиа отзыва">
+      <div class="rw-media-dialog${viewerMin ? " rw-media-dialog-min" : ""}" data-role="viewer-dialog">
         ${viewerMin
           ? `<button class="rw-media-close rw-media-close-float" type="button" data-role="viewer-close" aria-label="Закрыть просмотр">×</button>`
           : `<div class="rw-media-dialog-top">
-              <div class="rw-media-dialog-caption" data-role="viewer-caption"></div>
-              ${viewerCfg.showOriginal === false ? "" : `<a class="rw-media-original" data-role="viewer-original" href="#" target="_blank" rel="noreferrer">Открыть оригинал</a>`}
+              <div class="rw-media-who" data-role="viewer-who">
+                <span class="rw-avatar rw-who-avatar" data-role="viewer-avatar"></span>
+                <span class="rw-who-line"><b data-role="viewer-name"></b><span class="rw-when" data-role="viewer-when"></span></span>
+                <span class="rw-stars rw-who-stars" data-role="viewer-stars"></span>
+              </div>
+              <span class="rw-media-tools">
+                <span class="rw-media-counter" data-role="viewer-count"></span>
+                ${viewerCfg.showOriginal === false ? "" : `<a class="rw-media-original" data-role="viewer-original" href="#" target="_blank" rel="noreferrer">Открыть оригинал</a>`}
+              </span>
               <button class="rw-media-close" type="button" data-role="viewer-close" aria-label="Закрыть просмотр">×</button>
             </div>`}
         <button class="rw-media-nav rw-media-prev" type="button" data-role="viewer-prev" aria-label="Предыдущее медиа">‹</button>
         <div class="rw-media-stage" data-role="viewer-stage"></div>
         <button class="rw-media-nav rw-media-next" type="button" data-role="viewer-next" aria-label="Следующее медиа">›</button>
-        ${viewerCfg.showCounter === false || viewerMin ? "" : `<div class="rw-media-counter" data-role="viewer-counter"></div>`}
+        <button class="rw-media-play" type="button" data-role="viewer-play" aria-label="Пауза" hidden>
+          <span class="rw-media-play-icon" aria-hidden="true"></span>
+        </button>
+        <span class="rw-media-progress" data-role="viewer-progress" hidden><i></i></span>
+        ${viewerMin ? "" : `<div class="rw-media-queue" data-role="viewer-queue"></div>`}
+      </div>
+    `;
+
+    const formModal = document.createElement("div");
+    formModal.className = "rw-form-modal";
+    formModal.setAttribute("data-role", "form-modal");
+    formModal.hidden = true;
+    formModal.innerHTML = `
+      <div class="rw-fm-scrim" data-role="form-modal-scrim"></div>
+      <div class="rw-fm-card" role="dialog" aria-modal="true" aria-label="Оставить отзыв">
+        <header class="rw-fm-top">
+          <b data-role="form-modal-title"></b>
+          <button class="rw-fm-close" type="button" data-role="form-modal-close" aria-label="Закрыть форму">×</button>
+        </header>
+        <div class="rw-fm-body" data-role="form-modal-body"></div>
       </div>
     `;
 
@@ -455,11 +602,11 @@
 
     // Header first, then the flat section children of the root in config order.
     fragment.appendChild(header);
-    const bySection = { summary: overview, media, filters: filterBar, list: listWrap, form: submitForm };
+    const bySection = { summary: overview, player, media, filters: filterBar, list: listWrap, form: submitForm };
     for (const id of config.layout.sections) {
       fragment.appendChild(bySection[id]);
     }
-    fragment.append(questionsPanel, viewer);
+    fragment.append(questionsPanel, viewer, formModal);
     return fragment;
   }
 
@@ -469,17 +616,27 @@
     }
     root.__reviewsWidgetKeydown = (event) => {
       const viewer = root.querySelector('[data-role="media-viewer"]');
-      if (!viewer || viewer.hidden) {
+      if (viewer && viewer.open) {
+        if (event.key === "ArrowLeft") {
+          event.preventDefault();
+          shiftMediaViewer(root, -1, state);
+        }
+        if (event.key === "ArrowRight") {
+          event.preventDefault();
+          shiftMediaViewer(root, 1, state);
+        }
+        if (event.key === " ") {
+          const target = event.target;
+          if (target && ["INPUT", "TEXTAREA", "SELECT", "BUTTON"].includes(target.tagName)) return;
+          event.preventDefault();
+          toggleViewerPlay(root, state);
+        }
         return;
       }
-      if (event.key === "Escape") {
-        closeMediaViewer(root);
-      }
-      if (event.key === "ArrowLeft") {
-        shiftMediaViewer(root, -1);
-      }
-      if (event.key === "ArrowRight") {
-        shiftMediaViewer(root, 1);
+      const modal = root.querySelector('[data-role="form-modal"]');
+      if (modal && !modal.hidden && event.key === "Escape") {
+        event.preventDefault();
+        closeFormModal(root, state);
       }
     };
     root.ownerDocument.addEventListener("keydown", root.__reviewsWidgetKeydown);
@@ -491,14 +648,14 @@
       const close = event.target.closest('[data-role="viewer-close"]');
       if (close && root.contains(close)) {
         event.preventDefault();
-        closeMediaViewer(root);
+        closeMediaViewer(root, state);
         return;
       }
 
       const nav = event.target.closest('[data-role="viewer-prev"], [data-role="viewer-next"]');
       if (nav && root.contains(nav)) {
         event.preventDefault();
-        shiftMediaViewer(root, nav.getAttribute("data-role") === "viewer-prev" ? -1 : 1);
+        shiftMediaViewer(root, nav.getAttribute("data-role") === "viewer-prev" ? -1 : 1, state);
         return;
       }
 
@@ -506,7 +663,7 @@
       if (trigger && root.contains(trigger)) {
         event.preventDefault();
         event.stopPropagation();
-        openMediaViewer(root, trigger);
+        openMediaViewer(root, trigger, state);
         return;
       }
       const submitToggle = event.target.closest('[data-role="submit-toggle"]');
@@ -522,14 +679,7 @@
       const writeCta = event.target.closest('[data-role="write-cta"]');
       if (writeCta && root.contains(writeCta)) {
         event.preventDefault();
-        state.submission.expanded = true;
-        state.submission.error = "";
-        state.submission.message = "";
-        render(root, state);
-        const submitEl = root.querySelector('[data-role="submit"]');
-        if (submitEl) {
-          submitEl.scrollIntoView({ behavior: "smooth", block: "start" });
-        }
+        openFormModal(root, state);
         return;
       }
 
@@ -545,13 +695,62 @@
         render(root, state);
         return;
       }
-      const qaToggle = event.target.closest('[data-role="qa-submit-toggle"]');
-      if (qaToggle && root.contains(qaToggle)) {
+      const formDone = event.target.closest('[data-role="form-done"]');
+      if (formDone && root.contains(formDone)) {
         event.preventDefault();
-        state.questionForm.expanded = !state.questionForm.expanded;
-        state.questionForm.error = "";
-        state.questionForm.message = "";
+        state.formDone = false;
+        closeFormModal(root, state);
         render(root, state);
+        return;
+      }
+      const formAgain = event.target.closest('[data-role="form-again"]');
+      if (formAgain && root.contains(formAgain)) {
+        event.preventDefault();
+        state.formDone = false;
+        state.formRating = 0;
+        state.formMedia = [];
+        state.formError = "";
+        state.submission.expanded = true;
+        render(root, state);
+        return;
+      }
+      const ctaOpen = event.target.closest('[data-role="form-cta-open"]');
+      if (ctaOpen && root.contains(ctaOpen)) {
+        event.preventDefault();
+        openFormModal(root, state);
+        return;
+      }
+      const starBtn = event.target.closest('[data-role="form-star"]');
+      if (starBtn && root.contains(starBtn)) {
+        event.preventDefault();
+        state.formRating = Number(starBtn.getAttribute("data-star")) || 0;
+        state.formError = "";
+        render(root, state);
+        return;
+      }
+      const thumbRemove = event.target.closest('[data-role="form-thumb-remove"]');
+      if (thumbRemove && root.contains(thumbRemove)) {
+        event.preventDefault();
+        const idx = Number(thumbRemove.getAttribute("data-thumb-index"));
+        if (state.formMedia) state.formMedia.splice(idx, 1);
+        render(root, state);
+        return;
+      }
+      const playBtn = event.target.closest('[data-role="viewer-play"]');
+      if (playBtn && root.contains(playBtn)) {
+        event.preventDefault();
+        toggleViewerPlay(root, state);
+        return;
+      }
+      const queueItem = event.target.closest('[data-role="viewer-queue"] [data-queue-index]');
+      if (queueItem && root.contains(queueItem)) {
+        event.preventDefault();
+        const viewer = root.querySelector('[data-role="media-viewer"]');
+        if (viewer && viewer.__items) {
+          viewer.__index = Number(queueItem.getAttribute("data-queue-index")) || 0;
+          renderMediaViewer(root, state);
+          scheduleViewerTimer(root, state);
+        }
         return;
       }
 
@@ -606,6 +805,34 @@
         submitQuestion(root, state, qaForm);
       }
     });
+
+    root.addEventListener("change", (event) => {
+      const input = event.target.closest('[data-role="form-media"]');
+      if (input && root.contains(input) && input.files && input.files.length) {
+        state.formMedia = state.formMedia || [];
+        const limit = state.config.form.maxMedia || 3;
+        Array.from(input.files).forEach((file) => {
+          if (state.formMedia.length >= limit) {
+            state.formError = `Максимум ${limit} файлов`;
+            return;
+          }
+          state.formMedia.push({ file, preview: file.type && file.type.indexOf("image/") === 0 ? URL.createObjectURL(file) : "./assets/review-video.svg" });
+        });
+        input.value = "";
+        render(root, state);
+      }
+    });
+    const feedEl = root.querySelector('[data-role="player-feed"]');
+    if (feedEl) {
+      feedEl.addEventListener("mouseenter", () => {
+        state.feedPaused = true;
+        clearFeedTimer(state);
+      });
+      feedEl.addEventListener("mouseleave", () => {
+        state.feedPaused = false;
+        scheduleFeedTimer(root, state);
+      });
+    }
 
     const sort = root.querySelector('[data-role="sort"]');
     if (sort) {
@@ -679,6 +906,7 @@
       renderSummary(root, state.reviews, [], state);
       renderSegments(root, state, state.reviews);
       renderDistribution(root, state.reviews);
+      renderPlayerFeed(root, state);
       renderMediaStrip(root, state.reviews, state.config);
       renderWall(root, state.reviews, state.config);
       renderList(root, [], state);
@@ -705,22 +933,38 @@
       state.config,
     );
 
-    const visibleCount = effectiveVisibleCount(state, filtered.length);
+    const pages = state.config.layout.pagination === "pages"
+      ? Math.max(1, Math.ceil(filtered.length / state.config.layout.pageSize))
+      : 0;
+    if (pages && state.pagerPage >= pages) state.pagerPage = 0;
+    const visibleCount = pages
+      ? filtered.slice(state.pagerPage * state.config.layout.pageSize, (state.pagerPage + 1) * state.config.layout.pageSize).length
+      : effectiveVisibleCount(state, filtered.length);
 
     renderSummary(root, all, filtered, state);
     renderSegments(root, state, all);
     renderDistribution(root, all);
+    renderPlayerFeed(root, state);
     renderMediaStrip(root, filtered, state.config);
     renderWall(root, filtered, state.config);
-    renderList(root, filtered.slice(0, visibleCount), state);
+    renderList(root, pages
+      ? filtered.slice(state.pagerPage * state.config.layout.pageSize, (state.pagerPage + 1) * state.config.layout.pageSize)
+      : filtered.slice(0, visibleCount), state);
 
     renderStatus(root, state.moreError || "Отзывов с такими фильтрами нет", filtered.length === 0 || Boolean(state.moreError));
     const loadMore = root.querySelector('[data-role="load-more"]');
-    if (loadMore) {
-      const canLoadRemote = Boolean(state.fullFeedSource && !state.fullFeedExhausted);
-      loadMore.textContent = state.loadingMore ? "Загружаем" : "Показать ещё";
-      loadMore.disabled = state.loadingMore;
-      loadMore.hidden = visibleCount >= filtered.length && !canLoadRemote;
+    const pager = root.querySelector('[data-role="pager"]');
+    if (pages) {
+      renderPager(root, state, filtered.length, pages);
+      if (loadMore) loadMore.hidden = true;
+    } else if (pager) {
+      pager.hidden = true;
+      if (loadMore) {
+        const canLoadRemote = Boolean(state.fullFeedSource && !state.fullFeedExhausted);
+        loadMore.textContent = state.loadingMore ? "Загружаем" : "Показать ещё";
+        loadMore.disabled = state.loadingMore;
+        loadMore.hidden = visibleCount >= filtered.length && !canLoadRemote;
+      }
     }
     renderSubmission(root, state);
   }
@@ -731,20 +975,142 @@
     status.textContent = text;
     status.hidden = !visible;
   }
+  /* ===== Плеер-лента (секция player) ===== */
+  const FEED_AR = { "9:16": "9 / 16", "3:4": "3 / 4", "1:1": "1 / 1" };
+  function renderPlayerFeed(root, state) {
+    const el = root.querySelector('[data-role="player-feed"]');
+    if (!el) return;
+    const cfg = state.config.layout.player;
+    const show = state.config.layout.sections.includes("player") && cfg.enabled !== false && state.context === "product";
+    el.hidden = !show;
+    if (!show) {
+      clearFeedTimer(state);
+      el.innerHTML = "";
+      return;
+    }
+    const videos = state.reviews.flatMap((review) => review.media
+      .filter((item) => item.kind === "video")
+      .map((item) => ({ item, review })));
+    if (!videos.length) {
+      clearFeedTimer(state);
+      el.innerHTML = "";
+      return;
+    }
+    const proxyBase = root.__reviewsProxyBase || "";
+    const tiles = videos.slice(0, 18).map(({ item, review }, index) => {
+      const src = item.previewUrl || "./assets/review-video.svg";
+      const dur = item.duration ? `<span class="rw-tile-dur">${escapeHTML(item.duration)}</span>` : "";
+      const badge = cfg.showSourceBadge && review.marketplace
+        ? `<span class="rw-tile-badge">${escapeHTML(marketplaceLabels[review.marketplace] || review.marketplace)}</span>` : "";
+      const author = cfg.showAuthor
+        ? `<span class="rw-tile-who"><span class="rw-tile-av">${escapeHTML(initials(review.authorName || "Покупатель"))}</span>${escapeHTML(review.authorName || "Покупатель")}</span>` : "";
+      const likes = cfg.showLikes && item.likes
+        ? `<span class="rw-tile-like"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.3 4.9 13a4.6 4.6 0 0 1 0-6.4 4.3 4.3 0 0 1 6.2 0l.9 1 .9-1a4.3 4.3 0 0 1 6.2 0 4.6 4.6 0 0 1 0 6.4Z"/></svg>${escapeHTML(String(item.likes))}</span>` : "";
+      const active = cfg.autoAdvance.enabled && index === state.feedIndex;
+      const mediaAttrs = mediaTriggerAttributes({ ...item, previewUrl: item.previewUrl || "" }, `Видео отзыва, ${review.authorName || "Покупатель"}`, false);
+      return `<button class="rw-feed-tile${active ? " is-playing" : ""}" ${mediaAttrs} aria-label="Смотреть видео · ${escapeAttribute(review.authorName || "Покупатель")}">
+        <img src="${escapeAttribute(src)}" alt="Кадр из видео покупательницы" loading="lazy" />
+        <span class="rw-tile-grad" aria-hidden="true"></span>
+        <span class="rw-tile-play" aria-hidden="true"><i></i></span>
+        ${dur}${badge}${author}${likes}
+        ${active ? `<span class="rw-tile-prog" aria-hidden="true"><i></i></span><span class="rw-tile-ring" aria-hidden="true"></span>` : ""}
+      </button>`;
+    }).join("");
+    el.innerHTML = `
+      <div class="rw-feed-head">
+        <b>${escapeHTML(cfg.title || defaultConfig.layout.player.title)}</b>
+        <span class="rw-feed-n">${pluralize(videos.length, "видео", "видео", "видео")}</span>
+      </div>
+      <div class="rw-feed-row">${tiles}</div>
+    `;
+    el.style.setProperty("--rw-feed-ar", FEED_AR[cfg.tile.aspect] || "9 / 16");
+    el.style.setProperty("--rw-feed-tile", `${cfg.tile.width}px`);
+    scheduleFeedTimer(root, state);
+  }
+  function clearFeedTimer(state) {
+    if (state.feedTimer) { clearTimeout(state.feedTimer); state.feedTimer = null; }
+  }
+  function feedVideoIndexes(state) {
+    const out = [];
+    state.reviews.forEach((review) => review.media.forEach((item) => {
+      if (item.kind === "video") out.push(item);
+    }));
+    return out;
+  }
+  function scheduleFeedTimer(root, state) {
+    clearFeedTimer(state);
+    const cfg = state.config.layout.player;
+    if (!cfg.autoAdvance.enabled || state.feedPaused) return;
+    const viewer = root.querySelector('[data-role="media-viewer"]');
+    if (viewer && viewer.open) return;
+    const videos = state.reviews.flatMap((review) => review.media.filter((item) => item.kind === "video"));
+    if (!videos.length) return;
+    if (state.feedIndex < 0 || state.feedIndex >= videos.length) state.feedIndex = 0;
+    state.feedTimer = setTimeout(() => {
+      state.feedTimer = null;
+      state.feedIndex = (state.feedIndex + 1) % videos.length;
+      render(root, state);
+    }, (cfg.autoAdvance.intervalSec || 5) * 1000);
+  }
+
+  /* ===== Пагинация «Страницы» ===== */
+  function renderPager(root, state, total, pages) {
+    const pager = root.querySelector('[data-role="pager"]');
+    if (!pager) return;
+    pager.hidden = pages <= 1;
+    if (pages <= 1) { pager.innerHTML = ""; return; }
+    let html = "";
+    for (let i = 0; i < pages; i++) {
+      html += `<button type="button" aria-current="${i === state.pagerPage}" data-page="${i}">${i + 1}</button>`;
+    }
+    pager.innerHTML = html;
+  }
+
+  /* ===== Медиа в карточке (раскладки макета) ===== */
+  function renderMediaSet(media, config, proxyBase) {
+    if (!config.visibility.photos || !media.length) {
+      return "";
+    }
+    const mc = config.layout.mediacard;
+    const lim = mc.layout === "one" ? 1 : Math.min(media.length, mc.maxTiles);
+    const rest = media.length - lim;
+    const tiles = media.slice(0, lim).map((raw, index) => {
+      const item = absolutizeUserMedia(raw, proxyBase);
+      const rawSrc = item.kind === "video" ? item.previewUrl || "./assets/review-video.svg" : item.url;
+      const src = item.kind === "video" ? rawSrc : mediaProxyURL(rawSrc, proxyBase);
+      const caption = item.kind === "video" ? "Видео отзыва" : "Фото отзыва";
+      const last = index === lim - 1;
+      const plus = last && rest > 0 && mc.plusMore ? `<span class="rw-mt-more">+${rest}</span>` : "";
+      const dur = item.kind === "video" && item.duration ? `<span class="rw-mt-dur">${escapeHTML(item.duration)}</span>` : "";
+      const play = item.kind === "video" ? `<span class="rw-mt-play" aria-hidden="true"><i></i></span>` : "";
+      return `<a class="rw-media-item rw-mset-item" href="${escapeAttribute(item.url)}" ${mediaTriggerAttributes(item, caption, false)}>
+        <img src="${escapeAttribute(src)}" alt="${escapeAttribute(caption)}" loading="lazy" />${play}${dur}${plus}
+      </a>`;
+    }).join("");
+    return `<div class="rw-media-set rw-mc-${escapeAttribute(mc.layout)}">${tiles}</div>`;
+  }
 
   function renderSummary(root, all, filtered, state) {
     const scoreEl = root.querySelector('[data-role="score"]');
-    if (!scoreEl) return;
+    if (!scoreEl && !root.querySelector('[data-role="summary"]')) return;
     const aggregate = summaryAggregate(all, state);
     const total = aggregate.totalReviews;
     const average = aggregate.averageRating;
-    scoreEl.textContent = average.toFixed(1);
+    if (scoreEl) scoreEl.textContent = average.toFixed(1);
     const stars = root.querySelector('[data-role="stars"]');
     const countEl = root.querySelector('[data-role="review-count"]');
     const summaryEl = root.querySelector('[data-role="summary"]');
     if (stars) stars.style.setProperty("--rating", average.toFixed(2));
     if (countEl) countEl.textContent = String(total);
-    if (summaryEl) summaryEl.textContent = `${pluralize(total, "отзыв", "отзыва", "отзывов")} покупателей · ${pluralize(filtered.length, "показан", "показано", "показано")}`;
+    if (summaryEl) {
+      const he = state.config.header.elements;
+      let text = `${pluralize(total, "отзыв", "отзыва", "отзывов")} покупателей`;
+      if (he.count !== false) text += ` · ${pluralize(filtered.length, "показан", "показано", "показано")}`;
+      if (he.recommend !== false && Number.isFinite(aggregate.recommendPercent) && aggregate.recommendPercent > 0) {
+        text += ` · ${Math.round(aggregate.recommendPercent)}% рекомендуют`;
+      }
+      summaryEl.textContent = text;
+    }
   }
 
   function renderSegments(root, state, reviews) {
@@ -1113,7 +1479,6 @@
         <span class="rw-wall-label">Стиль от сообщества</span>
         <span class="rw-wall-count">${pluralize(items.length, "фото", "фото", "фото")}</span>
         ${viewAllHref ? `<a class="rw-view-all" href="${escapeAttribute(viewAllHref)}" target="_blank" rel="noreferrer">Смотреть все</a>` : ""}
-        ${viewAllHref ? `<a class="rw-view-all" href="${escapeAttribute(viewAllHref)}" target="_blank" rel="noreferrer">Смотреть все</a>` : ""}
         ${items
           .slice(0, config.layout.wall.maxTiles)
           .map((item) => {
@@ -1164,10 +1529,11 @@
           </div>
           <time class="rw-date" datetime="${review.createdAt.toISOString()}">${formatDate(review.createdAt)}</time>
         </div>
+        ${review.title ? `<div class="rw-card-title">${escapeHTML(review.title)}</div>` : ""}
         ${renderCardText(review, state, root.__reviewsWidgetConfig)}
         ${renderProsCons(review, root.__reviewsWidgetConfig)}
         ${renderCustomTags(review, root.__reviewsWidgetConfig)}
-        ${renderMedia(review.media, root.__reviewsWidgetConfig, root.__reviewsProxyBase)}
+        ${renderMediaSet(review.media, root.__reviewsWidgetConfig, root.__reviewsProxyBase)}
         ${renderAnswer(review.answer, root.__reviewsWidgetConfig)}
       `;
       if (marketplaceLink) {
@@ -1190,6 +1556,7 @@
 
   function renderCustomTags(review, config) {
     const fields = (config && config.customFields) || [];
+    const tagsCfg = (config && config.customTags) || defaultConfig.customTags;
     const tags = fields
       .filter((field) => field.showInReview !== false)
       .map((field) => {
@@ -1198,8 +1565,13 @@
       })
       .filter(Boolean);
     if (!tags.length) return "";
+    if (tagsCfg.display === "string") {
+      return `<div class="rw-custom-tags rw-custom-tags-string">${tags.map((tag) =>
+        `<span class="rw-custom-tag">${escapeHTML(tag.label)} <b>${escapeHTML(tag.value)}</b></span>`
+      ).join('<span class="rw-tag-sep">·</span>')}</div>`;
+    }
     return `<div class="rw-custom-tags">${tags.map((tag) =>
-      `<span class="rw-custom-tag"><span class="rw-meta-label">${escapeHTML(tag.label)}</span> ${escapeHTML(tag.value)}</span>`
+      `<span class="rw-custom-tag"><span class="rw-meta-label">${tagsCfg.chipLabel === false ? "" : escapeHTML(tag.label)}</span> ${escapeHTML(tag.value)}</span>`
     ).join("")}</div>`;
   }
 
@@ -1249,6 +1621,25 @@
     `;
   }
 
+  function decorateItemForPanel(item, review, panel) {
+    if (!panel) {
+      return item;
+    }
+    const firstPhoto = (review.media || []).find((media) => (media.kind || "photo") !== "video");
+    const product = review.product || null;
+    return {
+      ...item,
+      productUrl: review.sellerProductUrl || review.marketplaceProductUrl || "",
+      productImage: firstPhoto ? mediaProxyURL(firstPhoto.url, panel.proxyBase) : "",
+      productRating: review.rating,
+      productPrice: product && product.price ? product.price : "",
+      productName: product && product.name ? product.name : "",
+      reviewText: review.text || "",
+      reviewAttrs: [],
+      review,
+    };
+  }
+
   function renderProsCons(review, config) {
     if (!config.visibility.prosCons) {
       return "";
@@ -1261,30 +1652,6 @@
       items.push(`<div class="rw-note"><strong>Минусы</strong>${escapeHTML(review.cons)}</div>`);
     }
     return items.length ? `<div class="rw-pros-cons">${items.join("")}</div>` : "";
-  }
-
-  function renderMedia(media, config, proxyBase) {
-    if (!config.visibility.photos || !media.length) {
-      return "";
-    }
-    return `
-      <div class="rw-media">
-        ${media
-          .map((raw) => {
-            const item = absolutizeUserMedia(raw, proxyBase);
-            const rawSrc = item.kind === "video" ? item.previewUrl || "./assets/review-video.svg" : item.url;
-            const src = item.kind === "video" ? rawSrc : mediaProxyURL(rawSrc, proxyBase);
-            const caption = item.kind === "video" ? "Видео отзыва" : "Фото отзыва";
-            return `
-              <a class="rw-media-item" href="${escapeAttribute(item.url)}" ${mediaTriggerAttributes(item, caption, false)}>
-                <img src="${escapeAttribute(src)}" alt="${item.kind === "video" ? "Видео отзыва" : "Фото отзыва"}" loading="lazy" />
-                ${item.kind === "video" ? '<span class="rw-video-badge" aria-hidden="true"></span>' : ""}
-              </a>
-            `;
-          })
-          .join("")}
-      </div>
-    `;
   }
 
 
@@ -1307,6 +1674,10 @@
       productUrl: review.sellerProductUrl || review.marketplaceProductUrl || "",
       productImage: firstPhoto ? mediaProxyURL(firstPhoto.url, panel.proxyBase) : "",
       productRating: review.rating,
+      productPrice: review.productPrice || "",
+      reviewText: review.text || "",
+      reviewAttrs: [],
+      review,
     };
   }
 
@@ -1325,13 +1696,18 @@
         `data-media-product-url="${escapeAttribute(item.productUrl || "")}"`,
         `data-media-product-image="${escapeAttribute(item.productImage || "")}"`,
         `data-media-product-rating="${escapeAttribute(item.productRating != null ? String(item.productRating) : "")}"`,
+        `data-media-product-price="${escapeAttribute(item.productPrice || "")}"`,
+        `data-media-review-text="${escapeAttribute(item.reviewText || "")}"`,
+        `data-media-author="${escapeAttribute((item.review || {}).authorName || "")}"`,
+        `data-media-when="${escapeAttribute(item.review && item.review.createdAt ? formatDate(item.review.createdAt) : "")}"`,
+        `data-media-stars="${escapeAttribute(String((item.review || {}).rating || 0))}"`,
       ] : [],
       'target="_blank"',
       'rel="noreferrer"',
     ].flat().filter(Boolean).join(" ");
   }
 
-  function openMediaViewer(root, trigger) {
+  function openMediaViewer(root, trigger, state) {
     const viewer = root.querySelector('[data-role="media-viewer"]');
     if (!viewer) {
       return;
@@ -1345,74 +1721,124 @@
     viewer.__items = items;
     viewer.__index = index;
     viewer.__previousFocus = root.ownerDocument.activeElement;
-    viewer.hidden = false;
-    viewer.setAttribute("aria-hidden", "false");
-    root.classList.add("rw-viewer-open");
-    renderMediaViewer(root);
-    const close = viewer.querySelector(".rw-media-close");
-    if (close && typeof close.focus === "function") {
-      close.focus();
-    }
+    if (state) state.viewerPlaying = true;
+    viewer.showModal();
+    renderMediaViewer(root, state);
+    scheduleViewerTimer(root, state);
   }
 
-  function closeMediaViewer(root) {
+  function closeMediaViewer(root, state) {
     const viewer = root.querySelector('[data-role="media-viewer"]');
-    if (!viewer || viewer.hidden) {
+    if (!viewer || !viewer.open) {
       return;
     }
-    viewer.hidden = true;
-    viewer.setAttribute("aria-hidden", "true");
-    root.classList.remove("rw-viewer-open");
+    clearViewerTimer(root, state);
+    viewer.close();
+    if (state) state.viewerPlaying = false;
     const previousFocus = viewer.__previousFocus;
     if (previousFocus && typeof previousFocus.focus === "function") {
       previousFocus.focus();
     }
   }
 
-  function shiftMediaViewer(root, direction) {
+  function shiftMediaViewer(root, direction, state) {
     const viewer = root.querySelector('[data-role="media-viewer"]');
-    if (!viewer || viewer.hidden || !viewer.__items || viewer.__items.length === 0) {
+    if (!viewer || !viewer.open || !viewer.__items || viewer.__items.length === 0) {
       return;
     }
     viewer.__index = (viewer.__index + direction + viewer.__items.length) % viewer.__items.length;
-    renderMediaViewer(root);
+    if (state) state.viewerPlaying = true;
+    renderMediaViewer(root, state);
+    scheduleViewerTimer(root, state);
   }
 
-  function renderMediaViewer(root) {
+  function toggleViewerPlay(root, state) {
+    const viewer = root.querySelector('[data-role="media-viewer"]');
+    if (!viewer || !viewer.open) return;
+    state.viewerPlaying = !state.viewerPlaying;
+    renderMediaViewer(root, state);
+    scheduleViewerTimer(root, state);
+  }
+
+  function clearViewerTimer(root, state) {
+    if (state && state.viewerTimer) { clearTimeout(state.viewerTimer); state.viewerTimer = null; }
+    const prog = root.querySelector('[data-role="viewer-progress"]');
+    if (prog) prog.hidden = true;
+  }
+
+  function scheduleViewerTimer(root, state) {
+    if (!state) return;
+    clearViewerTimer(root, state);
+    const viewer = root.querySelector('[data-role="media-viewer"]');
+    if (!viewer || !viewer.open) return;
+    const cfg = state.config.layout.player.autoAdvance;
+    if (!cfg.enabled || !state.viewerPlaying) return;
+    const items = viewer.__items || [];
+    const item = items[viewer.__index];
+    if (!item || item.kind !== "video") return;
+    const dur = durationSeconds(item.duration) || cfg.intervalSec || 5;
+    const prog = root.querySelector('[data-role="viewer-progress"]');
+    if (prog) {
+      prog.hidden = false;
+      prog.style.setProperty("--rw-vdur", `${dur}s`);
+      prog.querySelectorAll("i").forEach((bar) => { const fresh = bar.cloneNode(); bar.replaceWith(fresh); });
+    }
+    state.viewerTimer = setTimeout(() => {
+      state.viewerTimer = null;
+      shiftMediaViewer(root, 1, state);
+    }, dur * 1000);
+  }
+  function durationSeconds(text) {
+    const match = String(text || "").match(/(\d+):(\d+)/);
+    if (!match) return 0;
+    return Math.min(90, (Number(match[1]) * 60 + Number(match[2])) || 0);
+  }
+
+  function renderMediaViewer(root, state) {
     const viewer = root.querySelector('[data-role="media-viewer"]');
     const items = viewer.__items || [];
     const item = items[viewer.__index];
     if (!item) {
-      closeMediaViewer(root);
+      closeMediaViewer(root, state);
       return;
     }
     const stage = viewer.querySelector('[data-role="viewer-stage"]');
-    const caption = viewer.querySelector('[data-role="viewer-caption"]');
     const original = viewer.querySelector('[data-role="viewer-original"]');
-    const counter = viewer.querySelector('[data-role="viewer-counter"]');
+    const counter = viewer.querySelector('[data-role="viewer-count"]');
     const prev = viewer.querySelector('[data-role="viewer-prev"]');
     const next = viewer.querySelector('[data-role="viewer-next"]');
+    const queue = viewer.querySelector('[data-role="viewer-queue"]');
+    const avatar = viewer.querySelector('[data-role="viewer-avatar"]');
+    const nameEl = viewer.querySelector('[data-role="viewer-name"]');
+    const whenEl = viewer.querySelector('[data-role="viewer-when"]');
+    const starsEl = viewer.querySelector('[data-role="viewer-stars"]');
+    const playBtn = viewer.querySelector('[data-role="viewer-play"]');
+    const progress = viewer.querySelector('[data-role="viewer-progress"]');
+    const cfg = root.__reviewsWidgetConfig || {};
     const canPlayVideo = item.kind === "video" && isLikelyVideoURL(item.url);
     const canShowImage = item.kind !== "video" || item.previewUrl || isLikelyImageURL(item.url);
     const rawViewerSrc = item.kind === "video" ? item.previewUrl || item.url : item.url || item.previewUrl;
     const viewerSrc = item.kind === "video" ? rawViewerSrc : mediaProxyURL(rawViewerSrc, root.__reviewsProxyBase);
     const captionText = item.caption || (item.kind === "video" ? "Видео отзыва" : "Фото отзыва");
-    if (caption) {
-      caption.textContent = captionText;
-    }
+    const review = item.review || {};
+    if (nameEl) nameEl.textContent = review.authorName || "Покупатель";
+    if (whenEl) whenEl.textContent = review.createdAt ? ` · ${formatDate(review.createdAt)}` : "";
+    if (starsEl) starsEl.style.setProperty("--rating", String(review.rating || 0));
     if (original) {
       original.href = item.url;
       original.textContent = item.kind === "video" ? "Открыть видео" : "Открыть оригинал";
     }
-    if (counter) {
-      counter.textContent = `${viewer.__index + 1} / ${items.length}`;
-    }
+    if (counter) counter.textContent = `${viewer.__index + 1} / ${items.length}`;
     if (prev) prev.hidden = items.length < 2;
     if (next) next.hidden = items.length < 2;
-    const viewerVideoAttrs = (() => {
-      const videoConfig = root.__reviewsWidgetConfig && root.__reviewsWidgetConfig.layout.video;
-      return videoConfig && videoConfig.autoplayInViewer === false ? "" : " autoplay muted";
-    })();
+    const autoPlay = cfg.layout && cfg.layout.video && cfg.layout.video.autoplayInViewer !== false;
+    if (playBtn) {
+      playBtn.hidden = !canPlayVideo;
+      playBtn.setAttribute("aria-label", state && state.viewerPlaying ? "Пауза" : "Воспроизвести");
+      playBtn.classList.toggle("is-paused", !(state && state.viewerPlaying));
+    }
+    if (progress) progress.hidden = !(canPlayVideo && cfg.layout && cfg.layout.player.autoAdvance.enabled && state && state.viewerPlaying);
+    const viewerVideoAttrs = autoPlay ? " autoplay muted" : "";
     const panel = renderProductPanel(item);
     const embedSrc = embedFrameURL(item);
     stage.innerHTML = panel
@@ -1420,12 +1846,18 @@
       : embedSrc
       ? `<iframe class="rw-media-viewer-embed" src="${escapeAttribute(embedSrc)}" title="${escapeAttribute(captionText)}" loading="lazy" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" allowfullscreen></iframe>`
       : canPlayVideo
-      ? `<video class="rw-media-viewer-video" src="${escapeAttribute(item.url)}" controls playsinline${viewerVideoAttrs}></video>`
+      ? `<video class="rw-media-viewer-video" src="${escapeAttribute(item.url)}" playsinline${viewerVideoAttrs}></video>`
       : canShowImage ? `
         <img class="rw-media-viewer-image" src="${escapeAttribute(viewerSrc)}" alt="${escapeAttribute(captionText)}" />
-        ${item.kind === "video" ? '<span class="rw-media-viewer-play" aria-hidden="true"></span>' : ""}
       `
         : `<a class="rw-media-viewer-placeholder" href="${escapeAttribute(item.url)}" target="_blank" rel="noreferrer">Открыть медиа</a>`;
+    if (queue) {
+      queue.innerHTML = items.map((q, qi) => `
+        <button type="button" class="rw-media-q" data-queue-index="${qi}" aria-current="${qi === viewer.__index}" aria-label="${escapeAttribute(q.kind === "video" ? "Видео" : "Фото")} · ${escapeAttribute((q.review || {}).authorName || "Покупатель")}">
+          <img src="${escapeAttribute(q.kind === "video" ? (q.previewUrl || q.url) : q.url)}" alt="" loading="lazy" />
+          ${q.kind === "video" ? '<span class="rw-media-q-play" aria-hidden="true"></span>' : ""}
+        </button>`).join("");
+    }
   }
 
   function renderProductPanel(item) {
@@ -1436,17 +1868,31 @@
     const image = item.productImage
       ? `<img src="${escapeAttribute(item.productImage)}" alt="" loading="lazy" />`
       : '<span class="rw-product-panel-media-empty" aria-hidden="true"></span>';
+    const productName = item.productName
+      ? `<b class="rw-product-panel-name">${escapeHTML(String(item.productName))}</b>` : "";
+    const price = item.productPrice
+      ? `<span class="rw-product-panel-price">${escapeHTML(String(item.productPrice))}</span>` : "";
+    const reviewText = String(item.reviewText || "");
+    const quote = reviewText
+      ? `<p class="rw-product-panel-from">Из отзыва: <b>«${escapeHTML(reviewText.slice(0, 96))}${reviewText.length > 96 ? "…" : ""}»</b></p>` : "";
+    const reviewAttrs = Array.isArray(item.reviewAttrs) ? item.reviewAttrs : [];
+    const attrs = reviewAttrs.length
+      ? `<div class="rw-product-panel-attrs">${reviewAttrs.map((chip) => `<span class="rw-attr">${escapeHTML(String(chip))}</span>`).join("")}</div>` : "";
     const html = `
       <aside class="rw-product-panel" aria-label="Товар из отзыва">
         <div class="rw-product-panel-media">${image}</div>
+        ${productName}
         <div class="rw-product-panel-stars" style="--rating: ${Number.isFinite(rating) ? rating : 0}" aria-label="Рейтинг отзыва"></div>
+        ${price}
         <a class="rw-product-panel-link" href="${escapeAttribute(item.productUrl)}" target="_blank" rel="noreferrer">Посмотреть товар</a>
+        ${quote}
+        ${attrs}
       </aside>
     `;
     const mediaHTML = embedFrameURL(item)
       ? `<div class="rw-product-panel-stage"><iframe class="rw-media-viewer-embed" src="${escapeAttribute(embedFrameURL(item))}" title="${escapeAttribute(item.caption || "")}" loading="lazy" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" allowfullscreen></iframe></div>`
       : item.kind === "video" && isLikelyVideoURL(item.url)
-      ? `<div class="rw-product-panel-stage"><video class="rw-media-viewer-video" src="${escapeAttribute(item.url)}" controls playsinline></video></div>`
+      ? `<div class="rw-product-panel-stage"><video class="rw-media-viewer-video" src="${escapeAttribute(item.url)}" playsinline autoplay muted></video></div>`
       : `<div class="rw-product-panel-stage"><img class="rw-media-viewer-image" src="${escapeAttribute(item.previewUrl || item.url || item.productImage)}" alt="${escapeAttribute(item.caption || "")}" /></div>`;
     return { html, mediaHTML };
   }
@@ -1465,6 +1911,13 @@
         productUrl: node.getAttribute("data-media-product-url") || "",
         productImage: node.getAttribute("data-media-product-image") || "",
         productRating: node.getAttribute("data-media-product-rating") || "",
+        productPrice: node.getAttribute("data-media-product-price") || "",
+        reviewText: node.getAttribute("data-media-review-text") || "",
+        review: {
+          authorName: node.getAttribute("data-media-author") || "",
+          createdAt: node.getAttribute("data-media-when") || "",
+          rating: Number(node.getAttribute("data-media-stars") || 0),
+        },
       }))
       .filter((item) => {
         if (!item.url || seen.has(item.key)) {
@@ -1598,6 +2051,100 @@
     return `<div class="rw-custom-fields">${fields.map(renderCustomField).join("")}</div>`;
   }
 
+  function formBodyHTML(root, state) {
+    const cfg = state.submission.config;
+    const accepts = (cfg.allowedTypes || []).join(",");
+    const consentText = "Согласие на обработку персональных данных";
+    const consent = cfg.privacyUrl
+      ? `<a href="${escapeAttribute(cfg.privacyUrl)}" target="_blank" rel="noreferrer">${consentText}</a>`
+      : consentText;
+    const customFields = normalizeCustomFields(cfg.customFields || []);
+    const formCfg = state.config.form;
+    const fields = formCfg.fields || defaultConfig.form.fields;
+    const rating = Number(state.formRating || 0);
+    const stars = [1, 2, 3, 4, 5].map((n) => `
+      <button type="button" class="rw-form-star${n <= rating ? " is-on" : ""}" data-role="form-star" data-star="${n}" aria-label="${n} из 5" aria-pressed="${n <= rating}">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.78 6.38.93-4.62 4.5 1.09 6.36L12 17.4l-5.7 3-1.09-6.37-4.62-4.49 6.38-.93L12 2.8z"/></svg>
+      </button>`).join("");
+    const thumbs = (state.formMedia || []).map((file, idx) => `
+      <span class="rw-form-thumb"><img src="${escapeAttribute(file.preview)}" alt="" /><button type="button" data-role="form-thumb-remove" data-thumb-index="${idx}" aria-label="Убрать файл">×</button></span>
+    `).join("");
+    return `
+      <form class="rw-submit-form" data-role="submit-form">
+        <input type="text" name="website" class="rw-hp" tabindex="-1" autocomplete="off" aria-hidden="true" />
+        <input type="hidden" name="openedAt" value="${state.submission.openedAt}" />
+        <input type="hidden" name="sellerArticle" value="${escapeAttribute(state.sellerArticle)}" />
+        <div class="rw-form-stars" role="radiogroup" aria-label="Оценка">${stars}</div>
+        <div class="rw-submit-grid rw-submit-grid-review">
+          <label class="rw-field"><span>Имя</span><input name="authorName" required maxlength="80" autocomplete="name" /></label>
+          ${fields.title ? `<label class="rw-field"><span>Заголовок</span><input name="title" maxlength="512" placeholder="Коротко о главном" data-role="form-title" /></label>` : ""}
+          ${fields.email ? `<label class="rw-field"><span>Email</span><input name="authorEmail" type="email" required maxlength="320" autocomplete="email" /></label>` : ""}
+          <label class="rw-field rw-submit-wide"><span>Отзыв</span><textarea name="text" required maxlength="3000" rows="4" placeholder="Расскажите о покупке…"></textarea></label>
+          <label class="rw-field"><span>Плюсы</span><input name="pros" maxlength="1000" /></label>
+          <label class="rw-field"><span>Минусы</span><input name="cons" maxlength="1000" /></label>
+          ${renderCustomFields(customFields)}
+        </div>
+        ${fields.media ? `
+        <div class="rw-form-upload">
+          <label class="rw-form-add"><input name="media" type="file" accept="${escapeAttribute(accepts)}" multiple data-role="form-media" hidden /><span>Добавить фото или видео</span></label>
+          <span class="rw-form-thumbs">${thumbs}</span>
+        </div>
+        ${formCfg.mediaHint ? `<span class="rw-form-hint">${escapeHTML(formCfg.mediaHint)}</span>` : ""}` : ""}
+        <label class="rw-consent"><input name="privacyConsent" type="checkbox" required /> <span>Я даю ${consent}</span></label>
+        <div class="rw-submit-actions">
+          <button class="rw-submit-send" type="submit" ${state.submission.sending ? "disabled" : ""}>${state.submission.sending ? "Отправляем" : escapeHTML(state.config.form.submitLabel || defaultConfig.form.submitLabel)}</button>
+          ${state.formError ? `<span class="rw-submit-error">${escapeHTML(state.formError)}</span>` : ""}
+        </div>
+      </form>
+    `;
+  }
+
+  function successHTML() {
+    return `
+      <div class="rw-form-done">
+        <span class="rw-form-done-ok" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <b>Спасибо! Отзыв отправлен</b>
+        <p>Он появится в списке после модерации.</p>
+        <span class="rw-form-done-actions">
+          <button type="button" class="rw-submit-send" data-role="form-done">Готово</button>
+          <button type="button" class="rw-form-again" data-role="form-again">Заполнить ещё раз</button>
+        </span>
+      </div>
+    `;
+  }
+
+  function openFormModal(root, state) {
+    const modal = root.querySelector('[data-role="form-modal"]');
+    if (!modal) return;
+    state.formModalOpen = true;
+    state.formDone = false;
+    state.formRating = 0;
+    state.formMedia = [];
+    state.formError = "";
+    renderFormModal(root, state);
+    modal.hidden = false;
+    const close = modal.querySelector('[data-role="form-modal-close"]');
+    if (close) close.focus();
+  }
+
+  function closeFormModal(root, state) {
+    const modal = root.querySelector('[data-role="form-modal"]');
+    if (!modal || modal.hidden) return;
+    modal.hidden = true;
+    state.formModalOpen = false;
+    state.formDone = false;
+  }
+
+  function renderFormModal(root, state) {
+    const modal = root.querySelector('[data-role="form-modal"]');
+    if (!modal) return;
+    const titleEl = modal.querySelector('[data-role="form-modal-title"]');
+    if (titleEl) titleEl.textContent = state.config.form.title || defaultConfig.form.title;
+    const body = modal.querySelector('[data-role="form-modal-body"]');
+    if (!body) return;
+    body.innerHTML = state.formDone ? successHTML() : formBodyHTML(root, state);
+  }
+
   function renderSubmission(root, state) {
     const submitRoot = root.querySelector('[data-role="submit"]');
     if (!submitRoot) return;
@@ -1607,64 +2154,68 @@
       submitRoot.innerHTML = "";
       return;
     }
+    const formCfg = state.config.form;
+    if (state.formDone) {
+      submitRoot.hidden = false;
+      submitRoot.innerHTML = successHTML();
+      return;
+    }
+    if (formCfg.mode === "button") {
+      submitRoot.hidden = false;
+      submitRoot.innerHTML = `
+        <div class="rw-form-cta">
+          <div class="rw-form-cta-text">
+            <b>${escapeHTML(formCfg.cta.text || defaultConfig.form.cta.text)}</b>
+            ${formCfg.cta.hint ? `<p>${escapeHTML(formCfg.cta.hint)}</p>` : ""}
+          </div>
+          <button class="rw-form-cta-btn" type="button" data-role="form-cta-open">${escapeHTML(formCfg.cta.text || defaultConfig.form.cta.text)}</button>
+        </div>
+      `;
+      return;
+    }
     submitRoot.hidden = false;
-    const accepts = (cfg.allowedTypes || []).join(",");
-    const consentText = "Согласие на обработку персональных данных";
-    const consent = cfg.privacyUrl
-      ? `<a href="${escapeAttribute(cfg.privacyUrl)}" target="_blank" rel="noreferrer">${consentText}</a>`
-      : consentText;
-    const customFields = normalizeCustomFields(cfg.customFields || []);
     submitRoot.innerHTML = `
       <div class="rw-submit-head">
         <div>
-          <h3>Оставить отзыв</h3>
+          <h3>${escapeHTML(formCfg.title || defaultConfig.form.title)}</h3>
           <p>Отзыв появится после проверки модератором.</p>
           ${state.submission.message && !state.submission.expanded ? `<p class="rw-submit-ok">${escapeHTML(state.submission.message)}</p>` : ""}
         </div>
-        <button class="rw-submit-toggle" type="button" data-role="submit-toggle">${state.submission.expanded ? "Свернуть" : "Написать отзыв"}</button>
+        <button class="rw-submit-toggle" type="button" data-role="submit-toggle">${state.submission.expanded ? "Свернуть" : (state.config.labels.writeReview || "Написать отзыв")}</button>
       </div>
-      ${state.submission.expanded ? `
-        <form class="rw-submit-form" data-role="submit-form">
-          <input type="text" name="website" class="rw-hp" tabindex="-1" autocomplete="off" aria-hidden="true" />
-          <input type="hidden" name="openedAt" value="${state.submission.openedAt}" />
-          <input type="hidden" name="sellerArticle" value="${escapeAttribute(state.sellerArticle)}" />
-          <div class="rw-submit-grid rw-submit-grid-review">
-            <label class="rw-field"><span>Оценка</span><select name="rating" required>
-              <option value="5">5 — отлично</option>
-              <option value="4">4 — хорошо</option>
-              <option value="3">3 — нормально</option>
-              <option value="2">2 — плохо</option>
-              <option value="1">1 — ужасно</option>
-            </select></label>
-            <label class="rw-field"><span>Имя</span><input name="authorName" required maxlength="80" autocomplete="name" /></label>
-            <label class="rw-field"><span>Email</span><input name="authorEmail" type="email" required maxlength="320" autocomplete="email" /></label>
-            <label class="rw-field rw-submit-wide"><span>Отзыв</span><textarea name="text" required maxlength="3000" rows="4"></textarea></label>
-            <label class="rw-field"><span>Плюсы</span><input name="pros" maxlength="1000" /></label>
-            <label class="rw-field"><span>Минусы</span><input name="cons" maxlength="1000" /></label>
-            ${renderCustomFields(customFields)}
-            <label class="rw-field rw-submit-wide"><span>Фото или видео</span><input name="media" type="file" accept="${escapeAttribute(accepts)}" multiple /></label>
-          </div>
-          <label class="rw-consent"><input name="privacyConsent" type="checkbox" required /> <span>Я даю ${consent}</span></label>
-          <div class="rw-submit-actions">
-            <button class="rw-submit-send" type="submit" ${state.submission.sending ? "disabled" : ""}>${state.submission.sending ? "Отправляем" : "Отправить на модерацию"}</button>
-            ${state.submission.message ? `<span class="rw-submit-ok">${escapeHTML(state.submission.message)}</span>` : ""}
-            ${state.submission.error ? `<span class="rw-submit-error">${escapeHTML(state.submission.error)}</span>` : ""}
-          </div>
-        </form>
-      ` : ""}
+      ${state.submission.expanded ? formBodyHTML(root, state) : ""}
     `;
   }
 
   async function submitReview(root, state, form) {
     if (state.submission.sending) return;
+    if (!(Number(state.formRating || 0) >= 1)) {
+      state.formError = "Выберите оценку — без неё отзыв не публикуется";
+      render(root, state);
+      return;
+    }
+    state.formRating = Number(state.formRating);
     state.submission.sending = true;
+    state.formError = "";
     state.submission.error = "";
     state.submission.message = "";
     render(root, state);
     try {
       const formData = new FormData(form);
+      formData.set("rating", String(state.formRating));
       formData.set("sellerArticle", state.sellerArticle || formData.get("sellerArticle") || "");
+      // W34: заголовок уходит только если заполнен (BE принимает опциональное title ≤512).
+      const titleValue = String(formData.get("title") || "").trim();
+      if (titleValue) {
+        formData.set("title", titleValue.slice(0, 512));
+      } else {
+        formData.delete("title");
+      }
       formData.set("openedAt", String(state.submission.openedAt));
+      if (state.formMedia && state.formMedia.length) {
+        formData.delete("media");
+        state.formMedia.forEach((entry) => formData.append("media", entry.file, entry.file.name));
+      }
       const custom = {};
       formData.forEach((value, key) => {
         if (key.indexOf("custom-") === 0 && typeof value === "string" && value) {
@@ -1681,12 +2232,16 @@
       }
       state.submission.sending = false;
       state.submission.expanded = false;
-      state.submission.message = "Отзыв отправлен на модерацию";
+      state.submission.message = "";
+      state.formDone = true;
+      state.formMedia = [];
+      state.formRating = 0;
       state.submission.openedAt = Date.now();
       render(root, state);
     } catch (error) {
       state.submission.sending = false;
-      state.submission.error = error.message || "Не удалось отправить отзыв";
+      state.formError = error.message || "Не удалось отправить отзыв";
+      state.submission.error = "";
       render(root, state);
     }
   }
@@ -1925,11 +2480,33 @@
       .map((review) => applyMarketplacePolicy({
         ...review,
         rating: Number(review.rating || 0),
+        title: String(review.title || "").trim(),
+        product: review.product && typeof review.product === "object"
+          ? { name: String(review.product.name || ""), price: String(review.product.price || "") }
+          : null,
         createdAt: new Date(review.createdAt),
-        media: review.media || [],
+        media: (review.media || []).map((item) => ({
+          ...item,
+          duration: formatMediaDuration(item.duration),
+          likes: Number.isFinite(Number(item.likes)) && Number(item.likes) > 0 ? Math.round(Number(item.likes)) : 0,
+        })),
         pinned: Boolean(review.pinned),
       }, config))
       .filter(Boolean);
+  }
+
+  // BE: media[].duration — float seconds (0 = скрыть). Рендер «0:24».
+  function formatMediaDuration(seconds) {
+    const n = Number(seconds);
+    if (!Number.isFinite(n) || n <= 0) return "";
+    const total = Math.round(n);
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    return m > 0 ? `${m}:${String(s).padStart(2, "0")}` : `0:${String(s).padStart(2, "0")}`;
+  }
+
+  function marketplacePolicyFor(marketplace, config) {
+    return (config && config.marketplacePolicy && config.marketplacePolicy[marketplace]) || {};
   }
 
   function applyMarketplacePolicy(review, config) {
@@ -1947,10 +2524,6 @@
     return review;
   }
 
-  function marketplacePolicyFor(marketplace, config) {
-    return (config && config.marketplacePolicy && config.marketplacePolicy[marketplace]) || {};
-  }
-
   function shouldTrustAggregate(config) {
     return !Object.values(config.marketplacePolicy || {}).some((policy) => policy && policy.hidden);
   }
@@ -1962,14 +2535,16 @@
     const totalReviews = Number(aggregate.totalReviews ?? aggregate.count ?? 0);
     const ratingCount = Number(aggregate.ratingCount ?? totalReviews);
     const averageRating = Number(aggregate.averageRating ?? aggregate.ratingAvg ?? 0);
+    const recommendPercent = Number(aggregate.recommendPercent);
     return {
       totalReviews: Number.isFinite(totalReviews) ? totalReviews : 0,
       ratingCount: Number.isFinite(ratingCount) ? ratingCount : 0,
       averageRating: Number.isFinite(averageRating) ? averageRating : 0,
+      ...(Number.isFinite(recommendPercent) ? { recommendPercent } : {}),
     };
   }
 
-  const widgetSections = { summary: true, media: true, filters: true, list: true, form: true };
+  const widgetSections = { summary: true, player: true, media: true, filters: true, list: true, form: true };
 
   function normalizeSections(raw, visibility) {
     // Legacy configs published before `sections` gated blocks via visibility flags.
@@ -2005,7 +2580,12 @@
       visibility: { ...defaultConfig.visibility, ...(config.visibility || {}) },
       defaults: { ...defaultConfig.defaults, ...(config.defaults || {}) },
       labels: { ...defaultConfig.labels, ...(config.labels || {}) },
-      customFields: normalizeCustomFields(config.customFields || []),
+      form: {
+        ...defaultConfig.form,
+        ...(config.form || {}),
+        cta: { ...defaultConfig.form.cta, ...((config.form || {}).cta || {}) },
+      },
+      customTags: { ...defaultConfig.customTags, ...(config.customTags || {}) },
       ranking: Array.isArray(config.ranking) && config.ranking.length ? config.ranking : defaultConfig.ranking,
       marketplacePolicy: normalizeMarketplacePolicy(config.marketplacePolicy),
     };
@@ -2013,6 +2593,10 @@
     if (!["row", "stack", "center"].includes(merged.header.layout)) {
       merged.header.layout = "row";
     }
+    merged.header.elements = { ...defaultConfig.header.elements, ...(merged.header.elements || {}) };
+    ["title", "rating", "count", "recommend", "distribution"].forEach((key) => {
+      merged.header.elements[key] = merged.header.elements[key] !== false;
+    });
     if (!["card", "plain", "bubble", "accent"].includes(merged.answers.style)) {
       merged.answers.style = "card";
     }
@@ -2045,17 +2629,35 @@
     merged.typography.radius = Math.round(clampNumber(merged.typography.radius, 0, 24, 16));
     merged.layout.columns = Math.round(clampNumber(merged.layout.columns, 1, 4, 2));
     merged.layout.pageSize = Math.round(clampNumber(merged.layout.pageSize, 1, 24, 3));
+    merged.layout.pagination = merged.layout.pagination === "pages" ? "pages" : "more";
+    const mediacard = { ...defaultConfig.layout.mediacard, ...(merged.layout.mediacard || {}) };
+    mediacard.layout = ["row", "grid", "collage", "one"].includes(mediacard.layout) ? mediacard.layout : "row";
+    mediacard.aspect = ["16:10", "1:1", "4:5"].includes(mediacard.aspect) ? mediacard.aspect : "16:10";
+    mediacard.maxTiles = [3, 4, 6].includes(mediacard.maxTiles) ? mediacard.maxTiles : 4;
+    mediacard.plusMore = mediacard.plusMore !== false;
+    merged.layout.mediacard = mediacard;
+    const video = merged.layout.video || {};
+    video.aspect = ["3:4", "9:16", "1:1"].includes(video.aspect) ? video.aspect : "9:16";
+    video.tileWidth = Math.round(clampNumber(video.tileWidth, 120, 200, 156));
+    video.showAuthor = video.showAuthor !== false;
+    video.autoplayInViewer = video.autoplayInViewer !== false;
+    video.productPanel = video.productPanel !== false;
+    const player = { ...defaultConfig.layout.player, ...(merged.layout.player || {}) };
+    player.tile = { ...defaultConfig.layout.player.tile, ...(player.tile || {}) };
+    player.tile.aspect = ["9:16", "3:4", "1:1"].includes(player.tile.aspect) ? player.tile.aspect : "9:16";
+    player.tile.width = Math.round(clampNumber(player.tile.width, 120, 200, 156));
+    player.showAuthor = player.showAuthor !== false;
+    player.showLikes = player.showLikes !== false;
+    player.showSourceBadge = player.showSourceBadge !== false;
+    player.autoAdvance = { ...defaultConfig.layout.player.autoAdvance, ...(player.autoAdvance || {}) };
+    player.autoAdvance.intervalSec = clampNumber(player.autoAdvance.intervalSec, 4, 10, 5);
+    player.autoAdvance.pauseOnHover = player.autoAdvance.pauseOnHover !== false;
+    merged.layout.player = player;
     merged.layout.tileHover = merged.layout.tileHover !== false;
     merged.layout.sections = normalizeSections(merged.layout.sections, merged.visibility);
     if (!["list", "grid", "carousel", "video", "wall"].includes(merged.layout.mode)) {
       merged.layout.mode = "list";
     }
-    const video = merged.layout.video || {};
-    video.aspect = ["3:4", "9:16", "1:1"].includes(video.aspect) ? video.aspect : "9:16";
-    video.tileWidth = Math.round(clampNumber(video.tileWidth, 140, 320, 260));
-    video.showAuthor = video.showAuthor !== false;
-    video.autoplayInViewer = video.autoplayInViewer !== false;
-    video.productPanel = video.productPanel !== false;
     merged.layout.video = video;
     const wall = merged.layout.wall || {};
     wall.minTileWidth = Math.round(clampNumber(wall.minTileWidth, 140, 320, 200));
@@ -2063,6 +2665,25 @@
     wall.maxTiles = Math.round(clampNumber(wall.maxTiles, 1, 96, 24));
     merged.layout.wall = wall;
     merged.visibility.videoRail = merged.visibility.videoRail !== false;
+    merged.form = {
+      ...defaultConfig.form,
+      ...(merged.form || {}),
+      fields: { ...defaultConfig.form.fields, ...((merged.form || {}).fields || {}) },
+      cta: { ...defaultConfig.form.cta, ...((merged.form || {}).cta || {}) },
+    };
+    merged.form.mode = merged.form.mode === "button" ? "button" : "inline";
+    merged.form.title = String(merged.form.title || "").trim() || defaultConfig.form.title;
+    merged.form.submitLabel = String(merged.form.submitLabel || "").trim() || defaultConfig.form.submitLabel;
+    ["title", "email", "media"].forEach((key) => {
+      merged.form.fields[key] = merged.form.fields[key] !== false;
+    });
+    merged.form.maxMedia = [1, 3, 6].includes(merged.form.maxMedia) ? merged.form.maxMedia : 3;
+    merged.form.mediaHint = String(merged.form.mediaHint || "").trim();
+    merged.form.cta.text = String(merged.form.cta.text || "").trim() || defaultConfig.form.cta.text;
+    merged.form.cta.hint = String(merged.form.cta.hint || "").trim();
+    merged.customTags = { ...defaultConfig.customTags, ...(merged.customTags || {}) };
+    merged.customTags.display = merged.customTags.display === "string" ? "string" : "chips";
+    merged.customTags.chipLabel = merged.customTags.chipLabel !== false;
     merged.defaults.initialSort = String(merged.defaults.initialSort || "relevance").trim();
     if (!["relevance", "newest", "highest", "lowest", "media"].includes(merged.defaults.initialSort)) {
       merged.defaults.initialSort = "relevance";
@@ -2102,10 +2723,10 @@
 
   function summaryAggregate(reviews, state) {
     const fallback = aggregateFromReviews(reviews);
-    if (state.context === "homepage" && state.aggregate && state.aggregate.totalReviews > 0) {
-      return state.aggregate;
-    }
-    return fallback;
+    const remote = state.aggregate && state.aggregate.totalReviews > 0 ? state.aggregate : null;
+    const chosen = state.context === "homepage" && remote ? remote : fallback;
+    if (remote && Number.isFinite(remote.recommendPercent)) chosen.recommendPercent = remote.recommendPercent;
+    return chosen;
   }
 
   function aggregateFromReviews(reviews) {
@@ -2198,9 +2819,9 @@
     root.style.setProperty("--rw-video-card-width", `${config.layout.video.tileWidth}px`);
     root.style.setProperty("--rw-video-card-ratio", config.layout.video.aspect === "3:4" ? "3 / 4" : config.layout.video.aspect.replace(":", " / "));
     root.style.setProperty("--rw-radius", `${config.typography.radius}px`);
+    root.style.setProperty("--rw-font-scale", String(config.typography.scale || 1));
+    root.style.setProperty("--rw-columns", String(config.layout.columns));
     root.style.setProperty("--rw-star", theme.star);
-    root.style.setProperty("--rw-focus-ring", rgba(accent, 0.35));
-    root.style.setProperty("--rw-star-empty", mixChannels(panel, muted, 0.35));
     root.classList.toggle("rw-hide-distribution", !config.visibility.ratingDistribution);
     root.classList.toggle("rw-hide-badges", !config.visibility.marketplaceBadges);
     root.classList.toggle("rw-hide-filters", !config.visibility.filters);
@@ -2234,6 +2855,16 @@
 
     // Хром просмотрщика: минималистичный прячет верхнюю панель.
     root.classList.toggle("rw-viewer-min", config.viewer.chrome === "min");
+
+    // Пагинация и медикарточка.
+    root.classList.toggle("rw-pag-pages", config.layout.pagination === "pages");
+    root.style.setProperty("--rw-mc-aspect", { "16:10": "16 / 10", "1:1": "1 / 1", "4:5": "4 / 5" }[config.layout.mediacard.aspect] || "16 / 10");
+
+    // Элементы шапки.
+    root.classList.toggle("rw-he-no-title", config.header.elements.title === false);
+    root.classList.toggle("rw-he-no-rating", config.header.elements.rating === false);
+    root.classList.toggle("rw-he-no-count", config.header.elements.count === false);
+    root.classList.toggle("rw-he-no-recommend", config.header.elements.recommend === false);
   }
 
   function clampNumber(value, min, max, fallback) {
@@ -2398,11 +3029,13 @@
   }
 
   function formatDate(date) {
+    const value = date instanceof Date ? date : new Date(date);
+    if (Number.isNaN(value.getTime())) return String(date || "");
     return new Intl.DateTimeFormat("ru-RU", {
       day: "numeric",
       month: "short",
       year: "numeric",
-    }).format(date);
+    }).format(value);
   }
 
   function pluralize(count, one, few, many) {

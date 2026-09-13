@@ -51,13 +51,14 @@
   }
   eq("video layout mode is whitelisted", normVideo({ layout: { mode: "video" } }).layout.mode, "video");
   eq("unknown layout mode falls back to list", normVideo({ layout: { mode: "banana" } }).layout.mode, "list");
-  eq("video tileWidth clamps invalid 0 to min 140", normVideo({ layout: { mode: "video", video: { tileWidth: 0 } } }).layout.video.tileWidth, 140);
+  eq("video tileWidth clamps invalid 0 to min 120", normVideo({ layout: { mode: "video", video: { tileWidth: 0 } } }).layout.video.tileWidth, 120);
+  eq("video tileWidth clamps 999 to max 200", normVideo({ layout: { mode: "video", video: { tileWidth: 999 } } }).layout.video.tileWidth, 200);
   eq("video tileWidth keeps valid custom value", normVideo({ layout: { mode: "video", video: { tileWidth: 150 } } }).layout.video.tileWidth, 150);
   eq("video aspect enum rejects unknown", normVideo({ layout: { mode: "video", video: { aspect: "21:9" } } }).layout.video.aspect, "9:16");
   eq("video aspect enum accepts 9:16", normVideo({ layout: { mode: "video", video: { aspect: "9:16" } } }).layout.video.aspect, "9:16");
   eq("videoRail defaults to true", normVideo({}).visibility.videoRail, true);
   eq("videoRail false is respected", normVideo({ visibility: { videoRail: false } }).visibility.videoRail, false);
-  eq("video booleans default true", normVideo({ layout: { mode: "video" } }).layout.video, { aspect: "9:16", tileWidth: 260, showSourceBadge: true, showAuthor: true, autoplayInViewer: true, productPanel: true });
+  eq("video booleans default true", normVideo({ layout: { mode: "video" } }).layout.video, { aspect: "9:16", tileWidth: 156, showSourceBadge: true, showAuthor: true, autoplayInViewer: true, productPanel: true });
 
   function videoReview() {
     return {
