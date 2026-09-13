@@ -1,0 +1,7 @@
+[Unit]
+Description=Build and deploy reviews SaaS
+
+[Service]
+Type=oneshot
+WorkingDirectory=/srv/reviews-saas-src
+ExecStart=/srv/reviews-saas-src/deploy/saas/deploy.sh

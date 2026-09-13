@@ -1,0 +1,7 @@
+[Unit]
+Description=Nightly reviews SaaS database and credentials backup
+
+[Service]
+Type=oneshot
+EnvironmentFile=/srv/reviews-saas/.env
+ExecStart=/srv/reviews-saas-src/deploy/saas/backup.sh
