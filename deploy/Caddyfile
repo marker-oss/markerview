@@ -53,22 +53,3 @@
 
 	file_server
 }
-
-# Hosted SaaS instance. Set REVIEWS_SAAS_DOMAIN in Caddy's environment.
-{$REVIEWS_SAAS_DOMAIN} {
-	encode zstd gzip
-
-	@robokassa path /billing/result
-	@robokassa_bad not remote_ip 185.59.216.65 185.59.217.65
-	handle @robokassa_bad {
-		respond 403
-	}
-	@saas_backend path /api /api/* /admin /admin/* /billing /billing/* /healthz /user-media /user-media/*
-	reverse_proxy @saas_backend 127.0.0.1:8092
-}
-
-# Legacy self-host domain migration notes:
-# At cutover, add a site block for reviews.shegida.ru that rewrites
-# /reviews-widget/reviews-data/* and /api/* to the SaaS tenant-1 paths with
-# ?public_key=<TENANT_1_PUBLIC_KEY>. Substitute the real key only on the VPS;
-# never commit it here.
