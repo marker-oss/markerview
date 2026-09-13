@@ -2890,6 +2890,27 @@ small {
   min-height: 720px;
 }
 
+.browser .realframe {
+  position: relative;
+}
+
+.browser .realframe-hint {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  max-width: 90%;
+  padding: 8px 14px;
+  border: 1px solid var(--warn, #b4532a);
+  border-radius: 10px;
+  background: var(--surface, #fff);
+  color: var(--warn, #b4532a);
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: var(--admin-shadow-md);
+}
+
 .hintstrip {
   display: flex;
   gap: 10px;

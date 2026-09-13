@@ -271,6 +271,11 @@ export default function Editor() {
   useEffect(() => {
     previewCfgRef.current = previewCfg
   }, [previewCfg])
+  // E3(real): anchor селектор для прокси-превью; меняется из поля в hintstrip.
+  const [previewAnchor, setPreviewAnchor] = useState('#reviews-widget')
+  // Подсказка, если якоря нет на странице магазина (mount тогда не делаем —
+  // как живой loader: «no anchor» = просто не рендерим).
+  const [anchorMissing, setAnchorMissing] = useState(false)
 
   // Надёжный монтаж виджета в srcDoc-iframe: inline-скрипт в srcdoc не
   // исполняется (CSP/srcdoc-квирк Chromium), поэтому монтируем из родителя по onLoad.
@@ -302,6 +307,61 @@ export default function Editor() {
     const frame = previewFrameRef.current
     if (frame) mountPreviewWidget()
   }, [preview, mountPreviewWidget])
+
+  // Триггер ремонта real-превью: previewCfg уже приходит с 200мс-дебаунсом
+  // (см. выше), anchor/context/shopOrigin добавляют свои поводы.
+  const [realPreviewTick, setRealPreviewTick] = useState(0)
+  useEffect(() => {
+    setRealPreviewTick((t) => t + 1)
+  }, [previewCfg, previewSource, shopOrigin, previewAnchor, context])
+  // Режим «Страница магазина»: same-origin iframe с /api/preview-page.
+  // Сервер уже вырезал скрипты магазина и выложил window.ReviewsWidget
+  // (+ REVIEWS_EMBED_CONFIG, инертный без loader); родитель монтирует виджет
+  // сам, прокидывая сэмпл-отзывы и live-конфиг из рельсы. CSS текст тянем
+  // один раз и кэшируем на модуль (widgetCssTextReady внизу файла).
+  const realFrameRef = useRef<HTMLIFrameElement | null>(null)
+  const realAnchorRef = useRef(previewAnchor)
+  useEffect(() => {
+    realAnchorRef.current = previewAnchor
+  }, [previewAnchor])
+  const mountRealPreview = useCallback(() => {
+    if (previewSource !== 'real') return
+    const frame = realFrameRef.current
+    if (!frame) return
+    void widgetCssTextReady.then(() => {
+      try {
+        const win = frame.contentWindow as (Window & {
+          ReviewsWidget?: ReviewsWidgetApi & { mountShadow: (host: HTMLElement, options: Record<string, unknown>) => void }
+        }) | null
+        const doc = frame.contentDocument
+        if (!win || !doc || !win.ReviewsWidget?.mountShadow) return
+        const anchor = doc.querySelector(realAnchorRef.current)
+        setAnchorMissing(!anchor)
+        if (!anchor) return
+        let host = anchor.querySelector<HTMLElement>('[data-reviews-preview-host]')
+        // Один host на якорь: remount переиспользует его (mountShadow сам
+        // чистит shadowRoot), иначе каждый тик добавлял бы новый div.
+        if (!host) {
+          host = doc.createElement('div')
+          host.setAttribute('data-reviews-preview-host', '')
+          anchor.appendChild(host)
+        }
+        win.ReviewsWidget.mountShadow(host, {
+          styleText: widgetCssText,
+          reviews: win.ReviewsWidget.sampleReviews,
+          context,
+          config: previewCfgRef.current,
+          submissionUrl: '/api/review-submissions',
+          submissionConfig: { enabled: true, allowedTypes: ['image/jpeg', 'image/png', 'video/mp4'], privacyUrl: '' },
+        })
+      } catch {
+        /* iframe ещё грузится */
+      }
+    })
+  }, [previewSource, context])
+  useEffect(() => {
+    mountRealPreview()
+  }, [realPreviewTick, mountRealPreview])
   return (
     <>
       <div className="ed-tools">
@@ -362,6 +422,17 @@ export default function Editor() {
                 Страница магазина
               </button>
             </div>
+            {previewSource === 'real' && (
+              <label className="k" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                Якорь
+                <input
+                  value={previewAnchor}
+                  onChange={(e) => setPreviewAnchor(e.target.value)}
+                  placeholder="#reviews-widget"
+                  style={{ minWidth: 150 }}
+                />
+              </label>
+            )}
             <span>
               {previewSource === 'real'
                 ? 'Прокси-превью: страница получена сервером, скрипты магазина отключены.'
@@ -381,7 +452,19 @@ export default function Editor() {
               </div>
             </div>
             {previewSource === 'real' && shopOrigin ? (
-              <iframe title="Предпросмотр на странице магазина" src={`/api/preview-page?url=${encodeURIComponent(shopOrigin)}`} />
+              <div className="realframe">
+                <iframe
+                  title="Предпросмотр на странице магазина"
+                  ref={realFrameRef}
+                  onLoad={mountRealPreview}
+                  src={`/api/preview-page?url=${encodeURIComponent(shopOrigin)}&anchor=${encodeURIComponent(previewAnchor)}`}
+                />
+                {anchorMissing && (
+                  <div className="realframe-hint" role="alert">
+                    Якорь «{previewAnchor}» не найден на странице магазина — виджет не смонтирован.
+                  </div>
+                )}
+              </div>
             ) : (
               <iframe
                 title="Предпросмотр виджета"
@@ -1541,6 +1624,17 @@ function RangeField({
 }
 
 /* ============ превью: мок-страница + реальный виджет ============ */
+
+
+// CSS виджета как текст для mountShadow в real-превью: один fetch на модуль.
+let widgetCssText = ''
+const widgetCssTextReady = fetch('/reviews-widget.css')
+  .then((r) => (r.ok ? r.text() : ''))
+  .then((text) => {
+    widgetCssText = text
+    return text
+  })
+  .catch(() => '')
 
 function previewDocument(config: WidgetConfig, context: WidgetContext) {
   const configJson = JSON.stringify(config).replace(/</g, '\\u003c')

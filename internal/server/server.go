@@ -201,9 +201,20 @@ func (s *Server) handler() http.Handler {
 		}))
 	}
 	mux.Handle("/admin/", s.adminMux())
-	mux.Handle("/", http.FileServer(http.Dir(s.cfg.StaticDir)))
+	mux.Handle("/", noCacheStatic(http.FileServer(http.Dir(s.cfg.StaticDir))))
 
 	return securityHeaders(s.tenantScope(s.tenantRateLimit(s.cors(s.logRequests(mux)))))
+}
+
+// noCacheStatic marks static-dir assets revalidation-required: browsers may
+// cache them but must revalidate (If-Modified-Since/ETag against the
+// FileServer's Last-Modified), so widget JS/CSS updates become visible on the
+// next load instead of after a hard refresh.
+func noCacheStatic(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache")
+		next.ServeHTTP(w, r)
+	})
 }
 
 // tenantScope resolves the tenant for every request that reaches the store.
