@@ -89,10 +89,12 @@
       mode: "inline",
       title: "Оставить отзыв",
       submitLabel: "Отправить отзыв",
-      fields: { title: true, email: true, media: true },
+      fields: { title: true, email: true, media: true, prosCons: true },
       maxMedia: 3,
       mediaHint: "Фото до 8 МБ · видео до 50 МБ",
       cta: { text: "Оставить отзыв", hint: "Помогите другим покупателям — оценка, текст, фото или видео" },
+      // Где кнопка формы: section (CTA-полоса) | header | both (макет: form.cta)
+      ctaMode: "section",
     },
     customTags: {
       display: "chips",
@@ -320,6 +322,10 @@
     const state = {
       reviews: initialReviews,
       aggregate: shouldTrustAggregate(config) ? normalizeAggregate(options.aggregate) : null,
+      // Макетная FEED: отдельная лента медиа (не привязана к отзывам 1:1).
+      // Опционально приходит mount-опцией feed: [{kind,url,previewUrl,likes,duration,authorName,marketplace}].
+      // Без неё — как раньше, лента строится из media отзывов.
+      feed: Array.isArray(options.feed) ? options.feed : null,
       config,
       context,
       marketplace: config.defaults.marketplace || "all",
@@ -461,28 +467,30 @@
         ${showQuestions ? `<button class="rw-tab" type="button" data-role="tab-questions">Вопросы <sup data-role="question-count">0</sup></button>` : ""}
         <button class="rw-write-cta" type="button" data-role="write-cta" hidden>${escapeHTML(labels.writeReview || "Написать отзыв")}</button>
       </div>
-      ${he.title ? `<div class="rw-title" data-role="widget-title">${escapeHTML(config.header.title || defaultConfig.header.title)}</div>` : ""}
     `;
 
-    const overview = document.createElement("div");
-    overview.className = "rw-overview";
-    overview.setAttribute("data-section", "summary");
+  function formCtaHeader(config) {
+    return config.layout.sections.includes("form") && (config.form.ctaMode === "header" || config.form.ctaMode === "both");
+  }
+    // Шапка как в макете (w-head l-center): титул, счёт (big 30px + звёзды +
+    // счётчик столбиком), полосы распределения, кнопка формы — всё в одном
+    // грид-центре. data-roles сохранены для биндингов.
     const showScoreBlock = he.rating || he.count || he.recommend;
+    const overview = document.createElement("div");
+    overview.className = "rw-head";
+    overview.setAttribute("data-section", "summary");
     overview.innerHTML = `
+      ${he.title ? `<span class="rw-wtitle" data-role="widget-title">${escapeHTML(config.header.title || defaultConfig.header.title)}</span>` : ""}
       ${showScoreBlock ? `
-      <div class="rw-score">
-        ${he.rating ? `<div class="rw-score-value" data-role="score">0.0</div>` : ""}
-        <div class="rw-score-meta">
-          ${he.rating ? `<div class="rw-stars" data-role="stars" aria-label="Средний рейтинг"></div>` : ""}
-          <div class="rw-summary" data-role="summary"></div>
-        </div>
-      </div>` : ""}
-      ${he.distribution ? `
-      <div class="rw-distribution" aria-label="Сводка отзывов">
-        <h2 class="rw-dist-title">${escapeHTML(productName)}</h2>
-        <div class="rw-dist-list" data-role="distribution"></div>
-        <div class="rw-market-counts" data-role="market-counts"></div>
-      </div>` : ""}
+      <span class="rw-sum">
+        ${he.rating ? `<span class="rw-big" data-role="score">0.0</span>` : ""}
+        <span>
+          ${he.rating ? `<span class="rw-stars" data-role="stars" aria-label="Средний рейтинг"></span>` : ""}
+          ${he.count ? `<span class="rw-count" data-role="summary" style="display:block"></span>` : ""}
+        </span>
+      </span>` : ""}
+      ${he.distribution ? `<span class="rw-dist" data-role="distwrap"></span>` : ""}
+      ${formCtaHeader(config) ? `<button class="rw-hbtn" type="button" data-role="head-cta">${escapeHTML(config.form.cta.text || defaultConfig.form.cta.text)}</button>` : ""}
     `;
     if (config.appearance.viewAllHref) {
       const viewAll = document.createElement("div");
@@ -503,26 +511,9 @@
     media.setAttribute("data-section", "media");
 
     const filterBar = document.createElement("div");
-    filterBar.className = "rw-filter-bar";
+    filterBar.className = "rw-chips";
     filterBar.setAttribute("data-section", "filters");
-    filterBar.innerHTML = `
-      <div class="rw-controls">
-        <input class="rw-search" type="search" data-role="search" aria-label="Поиск по отзывам" placeholder="${escapeAttribute(labels.search || "Поиск по отзывам")}" />
-        <div class="rw-segments" data-role="quick-filters" aria-label="Быстрые фильтры"></div>
-        <div class="rw-segments" data-role="marketplaces" aria-label="Маркетплейс"></div>
-        <div class="rw-segments" data-role="ratings" aria-label="Рейтинг"></div>
-        <div class="rw-segments" data-role="custom-filters" aria-label="Атрибуты отзывов"></div>
-      </div>
-      <div class="rw-select-row">
-        <select class="rw-sort" data-role="sort" aria-label="Сортировка">
-          <option value="newest">Сначала новые</option>
-          <option value="relevance">Релевантные</option>
-          <option value="highest">Сначала высокая оценка</option>
-          <option value="lowest">Сначала низкая оценка</option>
-          <option value="media">Сначала с медиа</option>
-        </select>
-      </div>
-    `;
+    filterBar.innerHTML = `<div class="rw-chips-row" data-role="chips"></div>`;
 
     const listWrap = document.createElement("div");
     listWrap.className = "rw-list-wrap";
@@ -570,12 +561,11 @@
       </div>
     `;
 
-    const formModal = document.createElement("div");
+    const formModal = document.createElement("dialog");
     formModal.className = "rw-form-modal";
     formModal.setAttribute("data-role", "form-modal");
-    formModal.hidden = true;
+    formModal.setAttribute("aria-label", "Оставить отзыв");
     formModal.innerHTML = `
-      <div class="rw-fm-scrim" data-role="form-modal-scrim"></div>
       <div class="rw-fm-card" role="dialog" aria-modal="true" aria-label="Оставить отзыв">
         <header class="rw-fm-top">
           <b data-role="form-modal-title"></b>
@@ -632,11 +622,6 @@
           toggleViewerPlay(root, state);
         }
         return;
-      }
-      const modal = root.querySelector('[data-role="form-modal"]');
-      if (modal && !modal.hidden && event.key === "Escape") {
-        event.preventDefault();
-        closeFormModal(root, state);
       }
     };
     root.ownerDocument.addEventListener("keydown", root.__reviewsWidgetKeydown);
@@ -695,6 +680,13 @@
         render(root, state);
         return;
       }
+      const modalClose = event.target.closest('[data-role="form-modal-close"]');
+      if (modalClose && root.contains(modalClose)) {
+        event.preventDefault();
+        closeFormModal(root, state);
+        render(root, state);
+        return;
+      }
       const formDone = event.target.closest('[data-role="form-done"]');
       if (formDone && root.contains(formDone)) {
         event.preventDefault();
@@ -714,10 +706,17 @@
         render(root, state);
         return;
       }
-      const ctaOpen = event.target.closest('[data-role="form-cta-open"]');
+      const ctaOpen = event.target.closest('[data-role="form-cta-open"], [data-role="head-cta"]');
       if (ctaOpen && root.contains(ctaOpen)) {
         event.preventDefault();
         openFormModal(root, state);
+        return;
+      }
+      const addMedia = event.target.closest('[data-role="form-add-media"]');
+      if (addMedia && root.contains(addMedia)) {
+        event.preventDefault();
+        const input = addMedia.closest("form").querySelector('[data-role="form-media"]');
+        if (input) input.click();
         return;
       }
       const starBtn = event.target.closest('[data-role="form-star"]');
@@ -834,24 +833,6 @@
       });
     }
 
-    const sort = root.querySelector('[data-role="sort"]');
-    if (sort) {
-      sort.value = state.sort;
-      sort.addEventListener("change", (event) => {
-        state.sort = event.target.value;
-        resetListingState(state);
-        render(root, state);
-      });
-    }
-
-    const search = root.querySelector('[data-role="search"]');
-    if (search) {
-      search.addEventListener("input", (event) => {
-        state.searchQuery = event.target.value;
-        resetListingState(state);
-        render(root, state);
-      });
-    }
 
     const loadMoreBtn = root.querySelector('[data-role="load-more"]');
     if (loadMoreBtn) {
@@ -877,16 +858,18 @@
     const tabQuestionsEl = root.querySelector('[data-role="tab-questions"]');
     if (tabReviewsEl) tabReviewsEl.classList.toggle("is-active", state.activeTab === "reviews");
     if (tabQuestionsEl) tabQuestionsEl.classList.toggle("is-active", state.activeTab === "questions");
+    // Макет не имеет вкладок: при выключенных вопросах строка вкладок скрывается,
+    // а CTA живёт в шапке (rw-head). При включённых — вкладки возвращаются.
+    const tabsRow = root.querySelector(".rw-tabs");
+    if (tabsRow) tabsRow.hidden = !tabQuestionsEl;
+    // Макет: без вкладки «Вопросы» весь блок шапки-вкладок схлопывается.
+    const headerRow = root.querySelector(".rw-header");
+    if (headerRow) headerRow.hidden = !tabQuestionsEl;
 
     // Header write CTA: product context only (T2).
     const writeCta = root.querySelector('[data-role="write-cta"]');
     if (writeCta) {
       writeCta.hidden = state.context !== "product" || state.activeTab !== "reviews";
-    }
-    // Search input visibility follows the filters knob (T4).
-    const searchInput = root.querySelector('[data-role="search"]');
-    if (searchInput) {
-      searchInput.hidden = !state.config.visibility.filters;
     }
     // The overview, media strip and filter bar describe reviews only — hide them
     // on the questions tab so they don't imply the ratings/filters apply there.
@@ -905,9 +888,9 @@
     if (state.loading || state.error) {
       renderSummary(root, state.reviews, [], state);
       renderSegments(root, state, state.reviews);
-      renderDistribution(root, state.reviews);
+      renderDistribution(root, state.reviews, state);
       renderPlayerFeed(root, state);
-      renderMediaStrip(root, state.reviews, state.config);
+      renderMediaStrip(root, state, state.config);
       renderWall(root, state.reviews, state.config);
       renderList(root, [], state);
       renderStatus(root, state.loading ? "Загружаем отзывы" : state.error, true);
@@ -917,17 +900,15 @@
     }
 
     const query = String(state.searchQuery || "").trim().toLowerCase();
-    const all = state.reviews;
+    const all = chipsFilter(state.reviews, root);
     const filtered = sortReviews(
       all.filter((review) => {
-        const marketplaceOk = state.marketplace === "all" || review.marketplace === state.marketplace;
         const ratingOk = ratingMatches(review.rating, state.rating);
         const mediaOk = mediaMatches(review, state.mediaFilter);
         const defaultsOk = matchesDefaults(review, state.config.defaults);
         const searchOk = !query
           || `${review.text || ""} ${review.pros || ""} ${review.cons || ""}`.toLowerCase().includes(query);
-        const customOk = customMatches(review, state.customFilters);
-        return marketplaceOk && ratingOk && mediaOk && defaultsOk && searchOk && customOk;
+        return ratingOk && mediaOk && defaultsOk && searchOk;
       }),
       state.sort,
       state.config,
@@ -943,9 +924,9 @@
 
     renderSummary(root, all, filtered, state);
     renderSegments(root, state, all);
-    renderDistribution(root, all);
+    renderDistribution(root, all, state);
     renderPlayerFeed(root, state);
-    renderMediaStrip(root, filtered, state.config);
+    renderMediaStrip(root, state, state.config);
     renderWall(root, filtered, state.config);
     renderList(root, pages
       ? filtered.slice(state.pagerPage * state.config.layout.pageSize, (state.pagerPage + 1) * state.config.layout.pageSize)
@@ -988,38 +969,42 @@
       el.innerHTML = "";
       return;
     }
-    const videos = state.reviews.flatMap((review) => review.media
-      .filter((item) => item.kind === "video")
-      .map((item) => ({ item, review })));
-    if (!videos.length) {
+    // Источник ленты: макетная FEED (mount-опция feed) либо медиа отзывов.
+    const feedItems = state.feed || state.reviews.flatMap((review) => review.media);
+    if (!feedItems.length) {
       clearFeedTimer(state);
       el.innerHTML = "";
       return;
     }
     const proxyBase = root.__reviewsProxyBase || "";
-    const tiles = videos.slice(0, 18).map(({ item, review }, index) => {
+    const tiles = feedItems.slice(0, 18).map((item, index) => {
+      const author = item.authorName || "Покупатель";
       const src = item.previewUrl || "./assets/review-video.svg";
       const dur = item.duration ? `<span class="rw-tile-dur">${escapeHTML(item.duration)}</span>` : "";
-      const badge = cfg.showSourceBadge && review.marketplace
-        ? `<span class="rw-tile-badge">${escapeHTML(marketplaceLabels[review.marketplace] || review.marketplace)}</span>` : "";
-      const author = cfg.showAuthor
-        ? `<span class="rw-tile-who"><span class="rw-tile-av">${escapeHTML(initials(review.authorName || "Покупатель"))}</span>${escapeHTML(review.authorName || "Покупатель")}</span>` : "";
+      const badge = cfg.showSourceBadge && item.marketplace
+        ? `<span class="rw-tile-badge">${escapeHTML({ wb: "WB", ozon: "Ozon", ym: "ЯМ" }[item.marketplace] || item.marketplace)}</span>` : "";
+      const who = cfg.showAuthor
+        ? `<span class="rw-tile-who"><span class="rw-tile-av">${escapeHTML(initials(author))}</span>${escapeHTML(author)}</span>` : "";
       const likes = cfg.showLikes && item.likes
         ? `<span class="rw-tile-like"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.3 4.9 13a4.6 4.6 0 0 1 0-6.4 4.3 4.3 0 0 1 6.2 0l.9 1 .9-1a4.3 4.3 0 0 1 6.2 0 4.6 4.6 0 0 1 0 6.4Z"/></svg>${escapeHTML(String(item.likes))}</span>` : "";
       const active = cfg.autoAdvance.enabled && index === state.feedIndex;
-      const mediaAttrs = mediaTriggerAttributes({ ...item, previewUrl: item.previewUrl || "" }, `Видео отзыва, ${review.authorName || "Покупатель"}`, false);
-      return `<button class="rw-feed-tile${active ? " is-playing" : ""}" ${mediaAttrs} aria-label="Смотреть видео · ${escapeAttribute(review.authorName || "Покупатель")}">
+      const mediaAttrs = mediaTriggerAttributes({ ...item, previewUrl: item.previewUrl || "" }, `Видео отзыва, ${author}`, false);
+      return `<button class="rw-feed-tile${active ? " is-playing" : ""}" ${mediaAttrs} aria-label="Смотреть видео · ${escapeAttribute(author)}">
         <img src="${escapeAttribute(src)}" alt="Кадр из видео покупательницы" loading="lazy" />
         <span class="rw-tile-grad" aria-hidden="true"></span>
-        <span class="rw-tile-play" aria-hidden="true"><i></i></span>
-        ${dur}${badge}${author}${likes}
+        ${item.kind === "video" ? `<span class="rw-tile-play" aria-hidden="true"><i></i></span>${dur}` : ""}${badge}${who}${likes}
         ${active ? `<span class="rw-tile-prog" aria-hidden="true"><i></i></span><span class="rw-tile-ring" aria-hidden="true"></span>` : ""}
       </button>`;
     }).join("");
+    // Макет fhead: «N видео · N фото» + «Смотреть все» справа.
+    const vids = feedItems.filter((item) => item.kind === "video").length;
+    const photos = feedItems.length - vids;
+    const viewAll = cfg.showViewAll === false ? "" : `<button class="rw-feed-all" type="button">${escapeHTML(state.config.labels.viewAll || defaultConfig.labels.viewAll)}</button>`;
     el.innerHTML = `
       <div class="rw-feed-head">
         <b>${escapeHTML(cfg.title || defaultConfig.layout.player.title)}</b>
-        <span class="rw-feed-n">${pluralize(videos.length, "видео", "видео", "видео")}</span>
+        <span class="rw-feed-n">${vids} видео · ${photos} фото</span>
+        ${viewAll}
       </div>
       <div class="rw-feed-row">${tiles}</div>
     `;
@@ -1031,19 +1016,16 @@
     if (state.feedTimer) { clearTimeout(state.feedTimer); state.feedTimer = null; }
   }
   function feedVideoIndexes(state) {
-    const out = [];
-    state.reviews.forEach((review) => review.media.forEach((item) => {
-      if (item.kind === "video") out.push(item);
-    }));
-    return out;
+    const feedItems = state.feed || state.reviews.flatMap((review) => review.media);
+    return feedItems.filter((item) => item.kind === "video");
   }
   function scheduleFeedTimer(root, state) {
     clearFeedTimer(state);
     const cfg = state.config.layout.player;
     if (!cfg.autoAdvance.enabled || state.feedPaused) return;
     const viewer = root.querySelector('[data-role="media-viewer"]');
+    const videos = feedVideoIndexes(state);
     if (viewer && viewer.open) return;
-    const videos = state.reviews.flatMap((review) => review.media.filter((item) => item.kind === "video"));
     if (!videos.length) return;
     if (state.feedIndex < 0 || state.feedIndex >= videos.length) state.feedIndex = 0;
     state.feedTimer = setTimeout(() => {
@@ -1083,9 +1065,9 @@
       const plus = last && rest > 0 && mc.plusMore ? `<span class="rw-mt-more">+${rest}</span>` : "";
       const dur = item.kind === "video" && item.duration ? `<span class="rw-mt-dur">${escapeHTML(item.duration)}</span>` : "";
       const play = item.kind === "video" ? `<span class="rw-mt-play" aria-hidden="true"><i></i></span>` : "";
-      return `<a class="rw-media-item rw-mset-item" href="${escapeAttribute(item.url)}" ${mediaTriggerAttributes(item, caption, false)}>
-        <img src="${escapeAttribute(src)}" alt="${escapeAttribute(caption)}" loading="lazy" />${play}${dur}${plus}
-      </a>`;
+      return `<button type="button" class="rw-mt" ${mediaTriggerAttributes(item, caption, false)}>
+        <img src="${escapeAttribute(src)}" alt="${escapeAttribute(caption)}" loading="lazy">${play}${dur}${plus}
+      </button>`;
     }).join("");
     return `<div class="rw-media-set rw-mc-${escapeAttribute(mc.layout)}">${tiles}</div>`;
   }
@@ -1096,219 +1078,32 @@
     const aggregate = summaryAggregate(all, state);
     const total = aggregate.totalReviews;
     const average = aggregate.averageRating;
-    if (scoreEl) scoreEl.textContent = average.toFixed(1);
+    if (scoreEl) scoreEl.textContent = formatScore(average);
     const stars = root.querySelector('[data-role="stars"]');
     const countEl = root.querySelector('[data-role="review-count"]');
     const summaryEl = root.querySelector('[data-role="summary"]');
-    if (stars) stars.style.setProperty("--rating", average.toFixed(2));
+    if (stars) {
+      if (stars.closest(".rw-head")) {
+        // Макет: глифы «★★★★★» с затемнённым остатком (w-stars .dim).
+        const full = Math.round(average);
+        stars.innerHTML = "★".repeat(full) + (full < 5 ? `<span class="rw-dim">${"★".repeat(5 - full)}</span>` : "");
+      } else {
+        stars.style.setProperty("--rating", average.toFixed(2));
+      }
+    }
     if (countEl) countEl.textContent = String(total);
     if (summaryEl) {
-      const he = state.config.header.elements;
-      let text = `${pluralize(total, "отзыв", "отзыва", "отзывов")} покупателей`;
-      if (he.count !== false) text += ` · ${pluralize(filtered.length, "показан", "показано", "показано")}`;
-      if (he.recommend !== false && Number.isFinite(aggregate.recommendPercent) && aggregate.recommendPercent > 0) {
+      // Макет w-count: «312 отзывов · 89% рекомендуют» (без «N показано»).
+      let text = pluralize(total, "отзыв", "отзыва", "отзывов");
+      if (state.config.header.elements.recommend !== false && Number.isFinite(aggregate.recommendPercent) && aggregate.recommendPercent > 0) {
         text += ` · ${Math.round(aggregate.recommendPercent)}% рекомендуют`;
       }
       summaryEl.textContent = text;
     }
   }
-
-  function renderSegments(root, state, reviews) {
-    const marketplaceRoot = root.querySelector('[data-role="marketplaces"]');
-    if (!state.config.visibility.filters || !marketplaceRoot) {
-      ["quick-filters", "marketplaces", "ratings", "custom-filters"].forEach((role) => {
-        const el = root.querySelector(`[data-role="${role}"]`);
-        if (el) el.innerHTML = "";
-      });
-      return;
-    }
-
-    const marketplaces = ["all", ...unique(reviews.map((review) => review.marketplace))];
-    const quickRoot = root.querySelector('[data-role="quick-filters"]');
-    quickRoot.innerHTML = "";
-    quickRoot.appendChild(segmentButton("Новые", state.sort === "newest", () => {
-      state.sort = "newest";
-      resetListingState(state);
-      root.querySelector('[data-role="sort"]').value = state.sort;
-      render(root, state);
-    }));
-    quickRoot.appendChild(segmentButton("С фото", state.mediaFilter === "photo", () => {
-      state.mediaFilter = state.mediaFilter === "photo" ? "all" : "photo";
-      resetListingState(state);
-      render(root, state);
-    }));
-    quickRoot.appendChild(segmentButton("С видео", state.mediaFilter === "video", () => {
-      state.mediaFilter = state.mediaFilter === "video" ? "all" : "video";
-      resetListingState(state);
-      render(root, state);
-    }));
-
-    marketplaceRoot.innerHTML = "";
-    marketplaces.forEach((value) => {
-      marketplaceRoot.appendChild(segmentButton(labelMarketplaceValue(value, reviews), state.marketplace === value, () => {
-        state.marketplace = value;
-        resetListingState(state);
-        render(root, state);
-      }));
-    });
-
-    const ratingSource = reviews.filter((review) => matchesDefaults(review, state.config.defaults));
-    const ratings = ["all", 5, 4, 3, 2, 1].filter((value) => {
-      return value === "all" || ratingSource.some((review) => review.rating === value);
-    });
-    const ratingRoot = root.querySelector('[data-role="ratings"]');
-    ratingRoot.hidden = state.context === "homepage";
-    if (state.context === "homepage") {
-      ratingRoot.innerHTML = "";
-      return;
-    }
-    ratingRoot.innerHTML = "";
-    ratings.forEach((value) => {
-      const label = value === "all" ? "Все оценки" : `${value} ★`;
-      ratingRoot.appendChild(segmentButton(label, String(state.rating) === String(value), () => {
-        state.rating = String(value);
-        resetListingState(state);
-        render(root, state);
-      }));
-    });
-    renderCustomFilters(root, state, reviews);
-  }
-
-  // Public custom-attribute filters: only fields the admin marked filterable,
-  // and only values actually observed on the (defaults-matching) reviews.
-  // Layout, collapsible body, multiSelect and label wording come from config.filters.
-  function renderCustomFilters(root, state, reviews) {
-    const customRoot = root.querySelector('[data-role="custom-filters"]');
-    if (!customRoot) return;
-    const fcfg = state.config.filters;
-    const plain = fcfg.labelMode === "plain";
-    const source = reviews.filter((review) => matchesDefaults(review, state.config.defaults));
-    const fields = [];
-    (state.config.customFields || []).forEach((field) => {
-      if (!field.filterable) return;
-      const values = unique(source.map((review) => reviewCustomValue(review, field.id)).filter((value) => value !== "" && value != null));
-      if (values.length < 2) return;
-      fields.push({ field, values });
-    });
-    customRoot.innerHTML = "";
-    if (!fields.length) return;
-
-    const activeCount = Object.keys(state.customFilters).length;
-    let body = customRoot;
-    if (fcfg.collapsible) {
-      const toggle = document.createElement("button");
-      toggle.type = "button";
-      toggle.className = "rw-filters-toggle";
-      toggle.setAttribute("aria-expanded", String(state.customFiltersOpen));
-      toggle.textContent = `Фильтры · ${activeCount} активны`;
-      toggle.addEventListener("click", () => {
-        state.customFiltersOpen = !state.customFiltersOpen;
-        render(root, state);
-      });
-      customRoot.appendChild(toggle);
-      body = document.createElement("div");
-      body.className = "rw-filters-body";
-      body.hidden = !state.customFiltersOpen;
-      customRoot.appendChild(body);
-    }
-
-    if (fcfg.layout === "chips") {
-      const ribbon = document.createElement("div");
-      ribbon.className = "rw-filter-chips";
-      fields.forEach(({ field, values }) => {
-        values.forEach((value) => {
-          const chip = document.createElement("button");
-          chip.type = "button";
-          chip.className = "rw-filter-chip";
-          chip.textContent = value;
-          chip.setAttribute("aria-pressed", String(isCustomValueSelected(state, field.id, value)));
-          chip.addEventListener("click", () => {
-            setCustomFilter(state, field.id, value);
-            render(root, state);
-          });
-          ribbon.appendChild(chip);
-        });
-      });
-      body.appendChild(ribbon);
-      return;
-    }
-
-    fields.forEach(({ field, values }) => {
-      if (fcfg.layout === "dropdowns") {
-        const select = document.createElement("select");
-        select.className = "rw-filter-select";
-        select.setAttribute("aria-label", field.label);
-        const resetLabel = plain ? field.label : `${field.label}: все`;
-        const current = customFilterValues(state, field.id);
-        select.appendChild(new Option(resetLabel, "all", false, current.length === 0));
-        values.forEach((value) => {
-          select.appendChild(new Option(value, value, false, current.includes(value)));
-        });
-        select.addEventListener("change", () => {
-          setCustomFilter(state, field.id, select.value);
-          render(root, state);
-        });
-        body.appendChild(select);
-        return;
-      }
-      const group = document.createElement("div");
-      group.className = "rw-segments";
-      group.setAttribute("aria-label", field.label);
-      group.appendChild(segmentButton(plain ? field.label : `Все: ${field.label}`, !isCustomFilterActive(state, field.id), () => {
-        setCustomFilter(state, field.id, "all");
-        render(root, state);
-      }));
-      values.forEach((value) => {
-        group.appendChild(segmentButton(value, isCustomValueSelected(state, field.id, value), () => {
-          if (isCustomValueSelected(state, field.id, value)) {
-            setCustomFilter(state, field.id, "all");
-          } else {
-            setCustomFilter(state, field.id, value);
-          }
-          render(root, state);
-        }));
-      });
-      body.appendChild(group);
-    });
-  }
-
-  function customFilterValues(state, id) {
-    const value = state.customFilters[id];
-    return Array.isArray(value) ? value : value ? [value] : [];
-  }
-
-  function isCustomFilterActive(state, id) {
-    return customFilterValues(state, id).length > 0;
-  }
-
-  function isCustomValueSelected(state, id, value) {
-    return customFilterValues(state, id).includes(value);
-  }
-
-  function setCustomFilter(state, id, value) {
-    if (state.config.filters.multiSelect) {
-      const list = customFilterValues(state, id);
-      if (value === "all") {
-        delete state.customFilters[id];
-      } else {
-        const index = list.indexOf(value);
-        if (index >= 0) {
-          list.splice(index, 1);
-        } else {
-          list.push(value);
-        }
-        if (list.length) {
-          state.customFilters[id] = list;
-        } else {
-          delete state.customFilters[id];
-        }
-      }
-    } else if (value === "all") {
-      delete state.customFilters[id];
-    } else {
-      state.customFilters[id] = value;
-    }
-    resetListingState(state);
+  // «4,7» — запятая, как в макете (ru-RU формат без следящего нуля).
+  function formatScore(average) {
+    return average.toFixed(1).replace(".", ",");
   }
 
   function reviewCustomValue(review, id) {
@@ -1316,136 +1111,147 @@
     const value = custom[id];
     return typeof value === "string" ? value.trim() : value == null ? "" : String(value);
   }
-
-  function customMatches(review, filters) {
-    for (const id in filters) {
-      const want = filters[id];
-      const value = reviewCustomValue(review, id);
-      if (Array.isArray(want) ? !want.includes(value) : value !== want) return false;
+  // Макет w-chips: один ряд пилюль «Все · С фото · 5★ · площадки · настраиваемые
+  // поля». Мультиселект: клик добавляет/снимает чип, «Все» сбрасывает.
+  function renderSegments(root, state, reviews) {
+    const chipsRoot = root.querySelector('[data-role="chips"]');
+    if (!state.config.visibility.filters || !chipsRoot) return;
+    chipsRoot.innerHTML = "";
+    const chipState = chipStates(root);
+    const chip = (value, label, pressed, onClick) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "rw-chip" + (pressed ? " on" : "");
+      b.setAttribute("data-chip", value);
+      b.setAttribute("aria-pressed", String(pressed));
+      b.textContent = label;
+      b.addEventListener("click", onClick);
+      chipsRoot.appendChild(b);
+    };
+    const active = chipState.size === 0;
+    chip("all", "Все", active, () => { chipState.clear(); resetListingState(state); render(root, state); });
+    chip("photo", "С фото", chipState.has("photo"), () => { toggleChip(chipState, "photo"); resetListingState(state); render(root, state); });
+    const ratingSource = reviews.filter((review) => matchesDefaults(review, state.config.defaults));
+    if (ratingSource.some((review) => review.rating === 5)) {
+      chip("star5", "5★", chipState.has("star5"), () => { toggleChip(chipState, "star5"); resetListingState(state); render(root, state); });
     }
-    return true;
-  }
-
-  function renderDistribution(root, reviews) {
-    const distRoot = root.querySelector('[data-role="distribution"]');
-    if (!distRoot) return;
-    distRoot.innerHTML = "";
-    const max = Math.max(1, ...[1, 2, 3, 4, 5].map((rating) => countByRating(reviews, rating)));
-    [5, 4, 3, 2, 1].forEach((rating) => {
-      const count = countByRating(reviews, rating);
-      const row = document.createElement("button");
-      row.type = "button";
-      row.className = "rw-dist-row";
-      row.setAttribute("aria-label", `Показать отзывы с оценкой ${rating}`);
-      row.innerHTML = `
-        <span>${rating} ★</span>
-        <span class="rw-dist-track"><span class="rw-dist-fill" style="width: ${(count / max) * 100}%"></span></span>
-        <span>${count}</span>
-      `;
-      row.addEventListener("click", () => {
-        state.rating = String(rating);
-        resetListingState(state);
-        render(root, state);
+    unique(reviews.map((review) => review.marketplace)).forEach((value) => {
+      chip(value, labelMarketplaceValue(value, reviews), chipState.has(value), () => { toggleChip(chipState, value); resetListingState(state); render(root, state); });
+    });
+    // Макет renderChips: чипы настраиваемых полей — все опции фильтруемого
+    // поля в порядке options (не только наблюдаемые значения).
+    const fields = (state.config.customFields || []).filter((field) => field.filterable);
+    fields.forEach((field) => {
+      field.options.forEach((value) => {
+        chip(`${field.id}:${value}`, `${field.label}: ${value}`, chipState.has(`${field.id}:${value}`),
+          () => { toggleChip(chipState, `${field.id}:${value}`); resetListingState(state); render(root, state); });
       });
-      distRoot.appendChild(row);
     });
-
-    const marketRoot = root.querySelector('[data-role="market-counts"]');
-    if (!marketRoot) return;
-    marketRoot.innerHTML = "";
-    unique(reviews.map((review) => review.marketplace)).forEach((marketplace) => {
-      const row = document.createElement("div");
-      row.className = "rw-market-pill";
-      row.innerHTML = `<span>${labelMarketplaceValue(marketplace, reviews)}</span><strong>${reviews.filter((review) => review.marketplace === marketplace).length}</strong>`;
-      marketRoot.appendChild(row);
+  }
+  function chipStates(root) {
+    root.__chipState = root.__chipState || new Set();
+    return root.__chipState;
+  }
+  function toggleChip(chipState, value) {
+    if (chipState.has(value)) chipState.delete(value);
+    else chipState.add(value);
+  }
+  function chipsFilter(reviews, root) {
+    const chipState = chipStates(root);
+    if (!chipState.size) return reviews;
+    return reviews.filter((review) => {
+      let ok = true;
+      chipState.forEach((c) => {
+        if (c === "photo") ok = ok && !!(review.photo || (review.media || []).length);
+        else if (c === "star5") ok = ok && review.rating === 5;
+        else if (c.includes(":")) {
+          const idx = c.indexOf(":");
+          const id = c.slice(0, idx), val = c.slice(idx + 1);
+          ok = ok && String(reviewCustomValue(review, id)) === val;
+        }
+        else ok = ok && review.marketplace === c;
+      });
+      return ok;
     });
   }
 
-  function renderMediaStrip(root, reviews, config) {
+
+
+  // Макет w-dist: подписи «5★…1★» и полосы-проценты (не counts); вход —
+  // state.aggregate.distribution, при отсутствии — проценты из отзывов.
+  function renderDistribution(root, reviews, state) {
+    const distRoot = root.querySelector('[data-role="distwrap"]');
+    if (!distRoot) return;
+    const remote = state.aggregate && state.aggregate.totalReviews > 0 ? state.aggregate : null;
+    let rows;
+    if (remote && Array.isArray(remote.distribution) && remote.distribution.length) {
+      rows = remote.distribution.map((d) => ({ rating: d.stars, percent: d.percent }));
+    } else {
+      const total = Math.max(1, reviews.length);
+      rows = [5, 4, 3, 2, 1].map((rating) => ({
+        rating,
+        percent: Math.round((countByRating(reviews, rating) / total) * 100),
+      }));
+    }
+    distRoot.innerHTML = rows.map(({ rating, percent }) =>
+      `<span class="rw-dl">${rating}★</span><span class="rw-db"><i style="width:${Math.min(100, Math.max(0, percent))}%"></i></span>`
+    ).join("");
+  }
+
+  function renderMediaStrip(root, state, config) {
     const mediaRoot = root.querySelector('[data-role="media-strip"]');
     if (!mediaRoot) return;
-    if (!config.visibility.photos) {
-      mediaRoot.innerHTML = "";
-      mediaRoot.hidden = true;
-      return;
-    }
+    // Порядок ленты: макетная FEED первой (mount-опция), затем оставшиеся медиа
+    // отзывов, не вошедшие в FEED — так совпадает порядок buildMedia() макета.
     const panel = productPanelState(root, config);
-    const media = reviews.flatMap((review) => {
-      return review.media.map((raw) => {
+    let media = [];
+    if (state.feed) {
+      const mediaKey = (u) => String(u || "").replace(/^.*\//, "").replace(/-/g, "").toLowerCase();
+      const feedUrls = new Set(state.feed.map((item) => mediaKey(item.url)));
+      const rest = [];
+      state.reviews.forEach((review) => review.media.forEach((raw) => {
         const item = {
           ...absolutizeUserMedia(raw, root.__reviewsProxyBase),
           authorName: review.authorName || "Покупатель",
           marketplace: review.marketplace || "",
           rating: review.rating,
         };
-        return decorateItemForPanel(item, review, panel);
+        if (!feedUrls.has(mediaKey(item.url))) rest.push(decorateItemForPanel(item, review, panel));
+      }));
+      media = [...state.feed, ...rest];
+    } else {
+      media = state.reviews.flatMap((review) => {
+        return review.media.map((raw) => {
+          const item = {
+            ...absolutizeUserMedia(raw, root.__reviewsProxyBase),
+            authorName: review.authorName || "Покупатель",
+            marketplace: review.marketplace || "",
+            rating: review.rating,
+          };
+          return decorateItemForPanel(item, review, panel);
+        });
       });
-    });
-    const splitVideoRail = Boolean(config.visibility.videoRail);
-    const photos = splitVideoRail ? media.filter((item) => item.kind !== "video") : media;
-    const videos = splitVideoRail ? media.filter((item) => item.kind === "video") : [];
-    const railItemHTML = (item) => {
+    }
+    // Макет (04-editor w-media): один ряд квадратов 96px, видео — play-иконка
+    // снизу-справа (splay 20px) и длительность снизу-слева (sdur 9px). Без
+    // заголовка «Фото покупателей» и без сплит-рельс: вся медиа одной лентой.
+    const stileHTML = (item) => {
       const rawSrc = item.kind === "video" ? item.previewUrl || "./assets/review-video.svg" : item.url;
       const src = item.kind === "video" ? rawSrc : mediaProxyURL(rawSrc, root.__reviewsProxyBase);
       const caption = item.kind === "video" ? `Видео отзыва, ${item.authorName}` : `Фото отзыва, ${item.authorName}`;
-      const tileClass = item.kind === "video" && splitVideoRail ? "rw-strip-media-item rw-video-card" : "rw-strip-media-item";
-      const hoverMarkup = item.kind === "video" && splitVideoRail && config.layout.tileHover !== false
-        ? `<span class="rw-tile-hover"><span class="rw-stars" style="--rating: ${item.rating || 0}"></span><span>${escapeHTML(item.authorName || "Покупатель")}</span><span class="rw-tile-label">Смотреть</span></span>`
+      const play = item.kind === "video"
+        ? `<span class="rw-splay"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg></span><span class="rw-sdur">${escapeHTML(item.duration || "")}</span>`
         : "";
-      return `
-        <a class="${tileClass}" href="${escapeAttribute(item.url)}" ${item.kind === "video" && splitVideoRail ? `data-marketplace="${escapeAttribute(item.marketplace)}"` : ""} ${mediaTriggerAttributes(item, caption, Boolean(panel))}>
-          <img src="${escapeAttribute(src)}" alt="${escapeAttribute(item.kind === "video" ? "Видео отзыва" : `Фото отзыва, ${item.authorName}`)}" loading="lazy" />
-          ${item.kind === "video" ? '<span class="rw-play-badge"></span>' : ""}
-          ${item.kind === "video" && splitVideoRail ? `
-            ${config.layout.video.showSourceBadge && item.marketplace ? `<span class="rw-video-card-src">${escapeHTML(marketplaceLabels[item.marketplace] || item.marketplace)}</span>` : ""}
-            ${config.layout.video.showAuthor ? `<span class="rw-video-card-author">${escapeHTML(item.authorName)}</span>` : ""}
-          ` : ""}
-          ${hoverMarkup}
-        </a>
-      `;
+      return `<button type="button" class="rw-stile" ${mediaTriggerAttributes(item, caption, Boolean(panel))}>
+        <img src="${escapeAttribute(src)}" alt="${escapeAttribute(item.kind === "video" ? `Кадр из видео из отзыва · ${item.authorName}` : `Фото из отзыва · ${item.authorName}`)}" loading="lazy">${play}
+      </button>`;
     };
-    const railHTML = (items, railClass, ariaLabel) => `
-      <div class="${railClass}" tabindex="0" aria-label="${escapeAttribute(ariaLabel)}">
-        ${items
-          .slice(0, 18)
-          .map(railItemHTML)
-          .join("")}
-      </div>
-    `;
-    if (splitVideoRail && videos.length > 0) {
-      mediaRoot.hidden = photos.length === 0 && videos.length === 0;
-      if (mediaRoot.hidden) {
-        mediaRoot.innerHTML = "";
-        return;
-      }
-      mediaRoot.innerHTML = `
-        ${photos.length > 0 ? `
-          <div class="rw-media-head">
-            <strong>Фото покупателей</strong>
-            <span>${pluralize(photos.length, "материал", "материала", "материалов")}</span>
-          </div>
-          ${railHTML(photos, "rw-media-rail", "Фото покупателей")}
-        ` : ""}
-        <div class="rw-media-head">
-          <strong>Видео покупателей</strong>
-          <span>${pluralize(videos.length, "видео", "видео", "видео")}</span>
-        </div>
-        ${railHTML(videos, "rw-media-rail rw-media-rail--video", "Видео покупателей")}
-      `;
-      return;
-    }
     mediaRoot.hidden = media.length === 0;
     if (media.length === 0) {
       mediaRoot.innerHTML = "";
       return;
     }
-    mediaRoot.innerHTML = `
-      <div class="rw-media-head">
-        <strong>Фото покупателей</strong>
-        <span>${pluralize(media.length, "материал", "материала", "материалов")}</span>
-      </div>
-      ${railHTML(media, "rw-media-rail", "Фото и видео покупателей")}
-    `;
+    mediaRoot.innerHTML = media.slice(0, 9).map(stileHTML).join("");
   }
 
   function renderWall(root, reviews, config) {
@@ -1517,24 +1323,40 @@
         card.setAttribute("aria-label", "Открыть источник отзыва");
       }
 
+  // Макет: звёзды-глифы «★★★★★» с затемнённым остатком (w-stars .dim).
+  function starRowHTML(rating) {
+    const n = Math.max(0, Math.min(5, Math.round(Number(rating) || 0)));
+    return "★".repeat(n) + (n < 5 ? `<span class="rw-dim">${"★".repeat(5 - n)}</span>` : "");
+  }
+  // Макет w-when: относительные даты «сегодня / вчера / N дн назад», иначе Intl.
+  function relativeDate(date) {
+    const value = date instanceof Date ? date : new Date(date);
+    if (Number.isNaN(value.getTime())) return formatDate(date);
+    const days = Math.floor((Date.now() - value.getTime()) / 86400000);
+    if (days <= 0) return "сегодня";
+    if (days === 1) return "вчера";
+    return formatDate(value);
+  }
+  // Макет w-badge: короткий бейдж площадки («WB», «Ozon», «ЯМ») или «Новый».
+  function marketBadge(review) {
+    const pinned = review.pinned;
+    if (pinned) return `<span class="rw-badge">Новый</span>`;
+    const label = { wb: "WB", ozon: "Ozon", ym: "ЯМ" }[review.marketplace];
+    if (!label) return "";
+    return `<span class="rw-badge">${escapeHTML(label)}</span>`;
+  }
       card.innerHTML = `
-        <div class="rw-card-top">
-          <div class="rw-avatar" aria-hidden="true">${escapeHTML(initials(review.authorName || "Покупатель"))}</div>
-          <div class="rw-author">
-            <div class="rw-author-line">
-              <span class="rw-name">${escapeHTML(review.authorName || "Покупатель")}</span>
-              <span class="rw-market" data-marketplace="${escapeHTML(review.marketplace)}">${escapeHTML(reviewMarketplaceLabel(review))}</span>
-            </div>
-            <div class="rw-stars" style="--rating: ${review.rating}" aria-label="${review.rating} из 5"></div>
-          </div>
-          <time class="rw-date" datetime="${review.createdAt.toISOString()}">${formatDate(review.createdAt)}</time>
-        </div>
-        ${review.title ? `<div class="rw-card-title">${escapeHTML(review.title)}</div>` : ""}
-        ${renderCardText(review, state, root.__reviewsWidgetConfig)}
-        ${renderProsCons(review, root.__reviewsWidgetConfig)}
-        ${renderCustomTags(review, root.__reviewsWidgetConfig)}
         ${renderMediaSet(review.media, root.__reviewsWidgetConfig, root.__reviewsProxyBase)}
-        ${renderAnswer(review.answer, root.__reviewsWidgetConfig)}
+        <div class="rw-cbody">
+          <div class="rw-chiprow"><span class="rw-av">${escapeHTML(initials(review.authorName || "Покупатель"))}</span><span><span class="rw-name">${escapeHTML(review.authorName || "Покупатель")}</span> <span class="rw-when">· ${relativeDate(review.createdAt)}</span></span></div>
+          <div class="rw-stars rw-card-stars" style="margin-top:6px">${starRowHTML(review.rating)}</div>
+          ${review.title ? `<div class="rw-card-title">${escapeHTML(review.title)}</div>` : ""}
+          ${renderCardText(review, state, root.__reviewsWidgetConfig)}
+          ${renderCustomTags(review, root.__reviewsWidgetConfig)}
+          ${renderProsCons(review, root.__reviewsWidgetConfig)}
+          ${renderAnswer(review.answer, root.__reviewsWidgetConfig)}
+          <div class="rw-badges">${marketBadge(review)}<span class="rw-badge n">Проверенная покупка</span></div>
+        </div>
       `;
       if (marketplaceLink) {
         card.addEventListener("click", (event) => {
@@ -1570,8 +1392,9 @@
         `<span class="rw-custom-tag">${escapeHTML(tag.label)} <b>${escapeHTML(tag.value)}</b></span>`
       ).join('<span class="rw-tag-sep">·</span>')}</div>`;
     }
-    return `<div class="rw-custom-tags">${tags.map((tag) =>
-      `<span class="rw-custom-tag"><span class="rw-meta-label">${tagsCfg.chipLabel === false ? "" : escapeHTML(tag.label)}</span> ${escapeHTML(tag.value)}</span>`
+    // Макет w-attrs: пилюли «Рост 164» (label+value внутри одной пилюли).
+    return `<div class="rw-attrs">${tags.map((tag) =>
+      `<span class="rw-attr">${tagsCfg.chipLabel === false ? "" : escapeHTML(tag.label) + " "}${escapeHTML(tag.value)}</span>`
     ).join("")}</div>`;
   }
 
@@ -1640,16 +1463,17 @@
     };
   }
 
+  // Макет w-pros: muted-строка «Плюсы: …» (без бокса).
   function renderProsCons(review, config) {
     if (!config.visibility.prosCons) {
       return "";
     }
     const items = [];
     if (review.pros) {
-      items.push(`<div class="rw-note"><strong>Плюсы</strong>${escapeHTML(review.pros)}</div>`);
+      items.push(`<p class="rw-pros">${escapeHTML(review.pros)}</p>`);
     }
     if (review.cons) {
-      items.push(`<div class="rw-note"><strong>Минусы</strong>${escapeHTML(review.cons)}</div>`);
+      items.push(`<p class="rw-pros">${escapeHTML(review.cons)}</p>`);
     }
     return items.length ? `<div class="rw-pros-cons">${items.join("")}</div>` : "";
   }
@@ -1718,6 +1542,13 @@
     }
     const key = trigger.getAttribute("data-media-key");
     const index = Math.max(0, items.findIndex((item) => item.key === key));
+    // Панель товара живёт на тайле-триггере: при дедупе ключей (feed + strip
+    // рендерят одно медиа) переносим панельные атрибуты с кликнутого тайла.
+    [["product-url", "productUrl"], ["product-image", "productImage"], ["product-rating", "productRating"],
+     ["product-price", "productPrice"], ["review-text", "reviewText"]].forEach(([attr, prop]) => {
+      const value = trigger.getAttribute("data-media-" + attr);
+      if (value) items[index][prop] = value;
+    });
     viewer.__items = items;
     viewer.__index = index;
     viewer.__previousFocus = root.ownerDocument.activeElement;
@@ -1972,11 +1803,9 @@
     const fallbackTitle = answer.kind === "seller" ? "Ответ продавца" : "Ответ магазина";
     const title = String(answers.title || "").trim() || fallbackTitle;
     const showTitle = answers.showTitle !== false;
+    // Макет w-ans (ans-card): «<b>Ответ продавца:</b> текст» в одной плашке.
     return `
-      <div class="rw-answer" data-answer-kind="${escapeHTML(answer.kind || "")}" data-ans-style="${escapeHTML(answers.style)}">
-        ${showTitle ? `<div class="rw-answer-title">${escapeHTML(title)}</div>` : ""}
-        <p>${escapeHTML(answer.text)}</p>
-      </div>
+      <div class="rw-answer" data-answer-kind="${escapeHTML(answer.kind || "")}" data-ans-style="${escapeHTML(answers.style)}"><b>${escapeHTML(title)}:</b> ${escapeHTML(answer.text)}</div>
     `;
   }
 
@@ -2016,48 +1845,32 @@
   // One field: chip group (buttons + aria-pressed) for ≤5 options, otherwise a
   // native select; "text" falls back to a plain input. Mirrors the reference
   // competitor forms (question label, wrapped pills, single choice).
+  // Макет attrFieldHTML: <div><span class=flabel>Рост</span><chips|select|input></div>.
   function renderCustomField(field) {
-    const requiredMark = field.required ? ' <span class="rw-custom-required">*</span>' : "";
+    const req = field.required ? ' <span class="rw-custom-required">*</span>' : "";
+    const head = `<span class="rw-flabel">${escapeHTML(field.label)}${req}</span>`;
+    if (field.type === "select") {
+      return `<div class="rw-custom-field">${head}<select class="rw-input-w" name="custom-${escapeAttribute(field.id)}"><option value="">Не указан</option>${field.options.map((o) => `<option value="${escapeAttribute(o)}">${escapeHTML(o)}</option>`).join("")}</select></div>`;
+    }
     if (field.type === "text") {
-      return `
-        <label class="rw-field rw-custom-field"><span>${escapeHTML(field.label)}${requiredMark}</span><input name="custom-${escapeAttribute(field.id)}" maxlength="60" /></label>
-      `;
+      return `<div class="rw-custom-field">${head}<input class="rw-input-w" name="custom-${escapeAttribute(field.id)}" maxlength="60" placeholder="Ваш ответ"></div>`;
     }
-    if (field.options.length > 5) {
-      const options = field.options.map((option) =>
-        `<option value="${escapeAttribute(option)}">${escapeHTML(option)}</option>`
-      ).join("");
-      return `
-        <label class="rw-field rw-custom-field"><span>${escapeHTML(field.label)}${requiredMark}</span><select name="custom-${escapeAttribute(field.id)}" ${field.required ? "required" : ""}>
-          <option value="">—</option>
-          ${options}
-        </select></label>
-      `;
-    }
-    const chips = field.options.map((option) =>
-      `<button type="button" class="rw-chip" data-custom-field="${escapeAttribute(field.id)}" data-custom-value="${escapeAttribute(option)}" aria-pressed="false">${escapeHTML(option)}</button>`
-    ).join("");
-    return `
-      <fieldset class="rw-custom-field rw-custom-chips" data-custom-chips="${escapeAttribute(field.id)}">
-        <legend>${escapeHTML(field.label)}${requiredMark}</legend>
-        <div class="rw-chip-row">${chips}</div>
-        <input type="hidden" name="custom-${escapeAttribute(field.id)}" value="" />
-      </fieldset>
-    `;
+    return `<fieldset class="rw-custom-field rw-custom-chips" data-custom-chips="${escapeAttribute(field.id)}"><legend>${escapeHTML(field.label)}${req}</legend><div class="rw-chip-row">${field.options.map((o) => `<button type="button" class="rw-fchip rw-chip" data-custom-field="${escapeAttribute(field.id)}" data-custom-value="${escapeAttribute(o)}" aria-pressed="false">${escapeHTML(o)}</button>`).join("")}</div><input type="hidden" name="custom-${escapeAttribute(field.id)}" value="" /></fieldset>`;
   }
 
   function renderCustomFields(fields) {
     if (!fields.length) return "";
-    return `<div class="rw-custom-fields">${fields.map(renderCustomField).join("")}</div>`;
+    return fields.map(renderCustomField).join("");
   }
 
   function formBodyHTML(root, state) {
     const cfg = state.submission.config;
     const accepts = (cfg.allowedTypes || []).join(",");
     const consentText = "Согласие на обработку персональных данных";
+    const consentLabel = String(cfg.consentLabel || "Согласен(на) на публикацию отзыва");
     const consent = cfg.privacyUrl
-      ? `<a href="${escapeAttribute(cfg.privacyUrl)}" target="_blank" rel="noreferrer">${consentText}</a>`
-      : consentText;
+      ? `<a href="${escapeAttribute(cfg.privacyUrl)}" target="_blank" rel="noreferrer">${consentLabel}</a>`
+      : consentLabel;
     const customFields = normalizeCustomFields(cfg.customFields || []);
     const formCfg = state.config.form;
     const fields = formCfg.fields || defaultConfig.form.fields;
@@ -2069,32 +1882,25 @@
     const thumbs = (state.formMedia || []).map((file, idx) => `
       <span class="rw-form-thumb"><img src="${escapeAttribute(file.preview)}" alt="" /><button type="button" data-role="form-thumb-remove" data-thumb-index="${idx}" aria-label="Убрать файл">×</button></span>
     `).join("");
+    // Иннерная сетка дословно из макета (w-fmodal → formBodyHTML): заголовок
+    // с hint, «Оценка» с inline-лейблом, Имя label+input одной строкой,
+    // настраиваемые поля, Отзыв, медиа с подписью, согласие, кнопка.
     return `
       <form class="rw-submit-form" data-role="submit-form">
         <input type="text" name="website" class="rw-hp" tabindex="-1" autocomplete="off" aria-hidden="true" />
         <input type="hidden" name="openedAt" value="${state.submission.openedAt}" />
         <input type="hidden" name="sellerArticle" value="${escapeAttribute(state.sellerArticle)}" />
-        <div class="rw-form-stars" role="radiogroup" aria-label="Оценка">${stars}</div>
-        <div class="rw-submit-grid rw-submit-grid-review">
-          <label class="rw-field"><span>Имя</span><input name="authorName" required maxlength="80" autocomplete="name" /></label>
-          ${fields.title ? `<label class="rw-field"><span>Заголовок</span><input name="title" maxlength="512" placeholder="Коротко о главном" data-role="form-title" /></label>` : ""}
-          ${fields.email ? `<label class="rw-field"><span>Email</span><input name="authorEmail" type="email" required maxlength="320" autocomplete="email" /></label>` : ""}
-          <label class="rw-field rw-submit-wide"><span>Отзыв</span><textarea name="text" required maxlength="3000" rows="4" placeholder="Расскажите о покупке…"></textarea></label>
-          <label class="rw-field"><span>Плюсы</span><input name="pros" maxlength="1000" /></label>
-          <label class="rw-field"><span>Минусы</span><input name="cons" maxlength="1000" /></label>
-          ${renderCustomFields(customFields)}
-        </div>
-        ${fields.media ? `
-        <div class="rw-form-upload">
-          <label class="rw-form-add"><input name="media" type="file" accept="${escapeAttribute(accepts)}" multiple data-role="form-media" hidden /><span>Добавить фото или видео</span></label>
-          <span class="rw-form-thumbs">${thumbs}</span>
-        </div>
-        ${formCfg.mediaHint ? `<span class="rw-form-hint">${escapeHTML(formCfg.mediaHint)}</span>` : ""}` : ""}
-        <label class="rw-consent"><input name="privacyConsent" type="checkbox" required /> <span>Я даю ${consent}</span></label>
-        <div class="rw-submit-actions">
-          <button class="rw-submit-send" type="submit" ${state.submission.sending ? "disabled" : ""}>${state.submission.sending ? "Отправляем" : escapeHTML(state.config.form.submitLabel || defaultConfig.form.submitLabel)}</button>
-          ${state.formError ? `<span class="rw-submit-error">${escapeHTML(state.formError)}</span>` : ""}
-        </div>
+        <div><b>${escapeHTML(formCfg.title || defaultConfig.form.title)}</b><p class="rw-hintform">Оценка и текст — обязательные поля. Значения настраиваемых полей подсвечиваются в отзыве.</p></div>
+        <div><span class="rw-flabel">Оценка</span><div class="rw-form-stars" role="radiogroup" aria-label="Оценка">${stars}</div></div>
+        <div class="rw-frow2"><span class="rw-flabel">Имя</span><input class="rw-input-w" name="authorName" required maxlength="80" autocomplete="name" placeholder="Как вас зовут"></div>
+        ${fields.title ? `<div class="rw-frow2"><span class="rw-flabel">Заголовок</span><input class="rw-input-w" name="title" maxlength="512" placeholder="Коротко о главном" data-role="form-title"></div>` : ""}
+        ${fields.email ? `<div class="rw-frow2"><span class="rw-flabel">Email — не публикуется</span><input class="rw-input-w" name="authorEmail" type="email" required maxlength="320" autocomplete="email" placeholder="name@mail.ru"></div>` : ""}
+        ${renderCustomFields(customFields)}
+        <div><span class="rw-flabel">Отзыв</span><textarea class="rw-input-w" name="text" required maxlength="3000" placeholder="Расскажите о покупке…">${""}</textarea></div>
+        ${fields.media ? `<div><span class="rw-flabel">${escapeHTML(formCfg.mediaHint || "Фото или видео")}</span><div class="rw-form-upload"><label class="rw-form-add"><input name="media" type="file" accept="${escapeAttribute(accepts)}" multiple data-role="form-media" hidden>Добавить</label><button type="button" class="rw-form-add" data-role="form-add-media" hidden tabindex="-1" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l1.6-2.4A1 1 0 0 1 9.4 5h5.2a1 1 0 0 1 .8.6L17 8h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z"/><circle cx="12" cy="13.5" r="3.4"/></svg>Добавить</button><span class="rw-form-thumbs">${thumbs}</span></div></div>` : ""}
+        <label class="rw-consent"><input name="privacyConsent" type="checkbox" required> <span>${consent}</span></label>
+        ${state.formError ? `<span class="rw-ferr" data-role="form-error">${escapeHTML(state.formError)}</span>` : `<span class="rw-ferr" data-role="form-error" hidden></span>`}
+        <button class="rw-submit-send" type="submit" ${state.submission.sending ? "disabled" : ""}>${state.submission.sending ? "Отправляем" : escapeHTML(state.config.form.submitLabel || defaultConfig.form.submitLabel)}</button>
       </form>
     `;
   }
@@ -2115,24 +1921,31 @@
 
   function openFormModal(root, state) {
     const modal = root.querySelector('[data-role="form-modal"]');
-    if (!modal) return;
+    if (!modal || typeof modal.showModal !== "function") return;
     state.formModalOpen = true;
     state.formDone = false;
     state.formRating = 0;
     state.formMedia = [];
     state.formError = "";
     renderFormModal(root, state);
-    modal.hidden = false;
+    if (modal.open) return;
+    modal.__previousFocus = root.ownerDocument.activeElement;
+    modal.showModal();
     const close = modal.querySelector('[data-role="form-modal-close"]');
     if (close) close.focus();
   }
 
   function closeFormModal(root, state) {
     const modal = root.querySelector('[data-role="form-modal"]');
-    if (!modal || modal.hidden) return;
-    modal.hidden = true;
+    if (!modal || !modal.open) return;
+    modal.close();
     state.formModalOpen = false;
     state.formDone = false;
+    const previousFocus = modal.__previousFocus;
+    if (previousFocus && typeof previousFocus.focus === "function") {
+      previousFocus.focus();
+    }
+    modal.__previousFocus = null;
   }
 
   function renderFormModal(root, state) {
@@ -2585,6 +2398,7 @@
         ...(config.form || {}),
         cta: { ...defaultConfig.form.cta, ...((config.form || {}).cta || {}) },
       },
+      customFields: normalizeCustomFields(config.customFields || []),
       customTags: { ...defaultConfig.customTags, ...(config.customTags || {}) },
       ranking: Array.isArray(config.ranking) && config.ranking.length ? config.ranking : defaultConfig.ranking,
       marketplacePolicy: normalizeMarketplacePolicy(config.marketplacePolicy),
@@ -2682,6 +2496,9 @@
     merged.form.cta.text = String(merged.form.cta.text || "").trim() || defaultConfig.form.cta.text;
     merged.form.cta.hint = String(merged.form.cta.hint || "").trim();
     merged.customTags = { ...defaultConfig.customTags, ...(merged.customTags || {}) };
+    if (!["section", "header", "both"].includes(merged.form.ctaMode)) {
+      merged.form.ctaMode = "section";
+    }
     merged.customTags.display = merged.customTags.display === "string" ? "string" : "chips";
     merged.customTags.chipLabel = merged.customTags.chipLabel !== false;
     merged.defaults.initialSort = String(merged.defaults.initialSort || "relevance").trim();
@@ -2724,7 +2541,9 @@
   function summaryAggregate(reviews, state) {
     const fallback = aggregateFromReviews(reviews);
     const remote = state.aggregate && state.aggregate.totalReviews > 0 ? state.aggregate : null;
-    const chosen = state.context === "homepage" && remote ? remote : fallback;
+    // Входной aggregate доверяется в любом контексте (владелец: макет шлёт
+    // агрегат 4,7/312 для карточки товара); при отсутствии — считаем из отзывов.
+    const chosen = remote || fallback;
     if (remote && Number.isFinite(remote.recommendPercent)) chosen.recommendPercent = remote.recommendPercent;
     return chosen;
   }
@@ -2826,17 +2645,9 @@
     root.classList.toggle("rw-hide-badges", !config.visibility.marketplaceBadges);
     root.classList.toggle("rw-hide-filters", !config.visibility.filters);
 
-    // Тёмная тема: встроенная палитра поверх светлых дефолтов (акцент и звёзды
-    // пользователя сохраняются).
-    if (config.theme.dark && !config.typography.inheritSite) {
-      root.style.setProperty("--rw-text", "#F1EEF7");
-      root.style.setProperty("--rw-muted", "#A79FB5");
-      root.style.setProperty("--rw-border", "#3B3545");
-      root.style.setProperty("--rw-panel", "#1E1A26");
-      root.style.setProperty("--rw-soft", "#2A2534");
-      root.style.setProperty("--rw-soft-muted", "#3D3750");
-      root.style.setProperty("--rw-star-empty", "#3B3545");
-    }
+    // Тёмная тема как в макете: тумблер вешает только класс .rw-dark; токены
+    // берутся из config.theme (макет: инлайн state.* бьют .dark-класс, карточки
+    // остаются на светлой панели, темнеют лишь класс-зависимые правила).
     root.classList.toggle("rw-dark", config.theme.dark === true);
 
     // Схема шапки: ряд / стопка / центр.

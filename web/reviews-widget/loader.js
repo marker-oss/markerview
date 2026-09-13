@@ -363,6 +363,41 @@
   var currentPath = null;
   var requestSeq = 0;
   var spaWatchInstalled = false;
+  // CSS fetched as text and injected as an inline <style> (shadow or document)
+  // loses the stylesheet's own URL as the base: relative url()/@import resolve
+  // against the host page and 404. Rewrite them to absolute against the CSS URL.
+  function rewriteRelativeUrls(cssText, cssUrl) {
+    // Resolve first, guard by scheme: an origin-relative cssUrl like
+    // "/reviews-widget.css" (the snippet shape Embed.tsx generates with a
+    // relative base) must resolve against the page origin, not be skipped.
+    var resolve;
+    try {
+      resolve = new URL(cssUrl, location.href);
+    } catch (error) {
+      return cssText;
+    }
+    if (!cssText || !/^https?:$/i.test(resolve.protocol)) {
+      return cssText;
+    }
+    var base = resolve;
+    function absolutize(raw) {
+      if (/^(data:|https?:|\/\/|#)/i.test(raw)) {
+        return raw;
+      }
+      try {
+        return new URL(raw, base).href;
+      } catch (error) {
+        return raw;
+      }
+    }
+    return cssText
+      .replace(/url\(\s*(['"]?)([^'")]+)\1\s*\)/g, function (match, quote, raw) {
+        return "url(" + quote + absolutize(raw) + quote + ")";
+      })
+      .replace(/@import\s+(['"])([^'"]+)\1/g, function (match, quote, raw) {
+        return "@import " + quote + absolutize(raw) + quote;
+      });
+  }
 
   function loadWidgetAssets() {
     if (widgetLoading) {
@@ -378,7 +413,7 @@
           return response.text();
         })
         .then(function (text) {
-          widgetCssText = text;
+          widgetCssText = rewriteRelativeUrls(text, CFG.widgetCssUrl);
         });
 
       if (window.ReviewsWidget && window.ReviewsWidget.mountShadow) {
@@ -628,8 +663,16 @@
     };
   }
 
+  // Shadow isolation needs attachShadow (and open-mode shadowRoot reuse);
+  // without the API the widget falls back to light DOM instead of throwing.
   function shouldUseShadowDom() {
-    return CFG.useShadowDom !== false;
+    if (CFG.useShadowDom === false) {
+      return false;
+    }
+    if (!document.createElement("div").attachShadow) {
+      return false;
+    }
+    return true;
   }
 
   function ensureDocumentStyle(cssText) {
