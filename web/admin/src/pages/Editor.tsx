@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { apiGet, apiWrite } from '../api'
 import { toast } from '../toast'
 import { useDirty } from '../useDirty'
@@ -21,6 +21,13 @@ type VersionItem = {
   active: boolean
   created_at: string
 }
+
+type ReviewsWidgetApi = {
+  mount: (root: HTMLElement, options: Record<string, unknown>) => void
+  sampleReviews: unknown[]
+  defaultConfig: Record<string, unknown>
+}
+
 
 const visibilityLabels: Record<keyof WidgetConfig['visibility'], string> = {
   photos: 'Фото в отзывах',
@@ -59,6 +66,49 @@ const RAIL_TABS: { id: RailTab; label: string }[] = [
   { id: 'versions', label: 'Версии' },
 ]
 
+// E4: пресеты-снапшоты из макета 04-editor (04:1144-1149) — применяют весь вид.
+const PRESET_VARS: Record<string, Partial<WidgetConfig>> = {
+  default: {
+    theme: { ...defaultWidgetConfig.theme, accent: '#68478D', star: '#C99A3F', border: '#E7DFD7', panel: '#ffffff' },
+    typography: { ...defaultWidgetConfig.typography, radius: 16, scale: 1, density: 'comfortable' },
+    layout: { ...defaultWidgetConfig.layout, mode: 'list', columns: 2 },
+    header: { ...defaultWidgetConfig.header, layout: 'row' },
+    form: { ...defaultWidgetConfig.form, mode: 'inline' },
+    appearance: { ...defaultWidgetConfig.appearance, preset: 'default' },
+  },
+  editorial: {
+    theme: { ...defaultWidgetConfig.theme, accent: '#17191D', star: '#17191D', border: '#E3E3E3', panel: '#ffffff' },
+    typography: { ...defaultWidgetConfig.typography, radius: 4, scale: 1, density: 'comfortable' },
+    layout: { ...defaultWidgetConfig.layout, mode: 'carousel', columns: 2 },
+    header: { ...defaultWidgetConfig.header, layout: 'center' },
+    form: { ...defaultWidgetConfig.form, mode: 'button' },
+    appearance: { ...defaultWidgetConfig.appearance, preset: 'ugc-editorial' },
+  },
+  community: {
+    theme: { ...defaultWidgetConfig.theme, accent: '#0E7A6E', star: '#E8A33D', border: '#EAE3DA', panel: '#ffffff' },
+    typography: { ...defaultWidgetConfig.typography, radius: 14, scale: 1, density: 'comfortable' },
+    layout: { ...defaultWidgetConfig.layout, mode: 'wall', columns: 3 },
+    header: { ...defaultWidgetConfig.header, layout: 'stack' },
+    form: { ...defaultWidgetConfig.form, mode: 'button' },
+    appearance: { ...defaultWidgetConfig.appearance, preset: 'ugc-community' },
+  },
+  bazaar: {
+    theme: { ...defaultWidgetConfig.theme, accent: '#C2410C', star: '#C2410C', border: '#EADFD6', panel: '#ffffff' },
+    typography: { ...defaultWidgetConfig.typography, radius: 6, scale: 1, density: 'compact' },
+    layout: { ...defaultWidgetConfig.layout, mode: 'grid', columns: 3 },
+    header: { ...defaultWidgetConfig.header, layout: 'row' },
+    form: { ...defaultWidgetConfig.form, mode: 'inline' },
+    appearance: { ...defaultWidgetConfig.appearance, preset: 'bazaar' },
+  },
+}
+
+const EDITOR_PRESETS: { id: string; name: string; hint: string; color: string; tiles: 1 | 2 | 3 }[] = [
+  { id: 'default', name: 'Классика', hint: 'список · шапка рядом · форма секцией', color: '#68478D', tiles: 1 },
+  { id: 'editorial', name: 'Editorial', hint: 'лента · центр · форма в шапке', color: '#17191D', tiles: 1 },
+  { id: 'community', name: 'UGC Комьюнити', hint: 'стена фото · стопка · форма в 2 местах', color: '#0E7A6E', tiles: 2 },
+  { id: 'bazaar', name: 'Базар', hint: 'сетка 3-в-ряд · компактно · форма секцией', color: '#C2410C', tiles: 3 },
+]
+
 export default function Editor() {
   const [context, setContext] = useState<WidgetContext>('product')
   const [cfg, setCfg] = useState<WidgetConfig>(defaultWidgetConfig)
@@ -68,21 +118,57 @@ export default function Editor() {
   const [device, setDevice] = useState<'desktop' | 'mobile'>('desktop')
   const [railOff, setRailOff] = useState(false)
   const [previewCfg, setPreviewCfg] = useState<WidgetConfig>(defaultWidgetConfig)
+  // E1: undo-история (до 60 шагов) + E12: черновик в localStorage.
+  const historyRef = useRef<string[]>([])
+  const [contextVersions, setContextVersions] = useState<Record<string, number>>({})
+  // E3: источник превью (мок | прокси-страница). /api/preview-page готов на BE.
+  const [previewSource, setPreviewSource] = useState<'mock' | 'real'>('mock')
+  const [shopOrigin, setShopOrigin] = useState('')
 
   function load(nextContext = context) {
+    historyRef.current = []
     Promise.all([
       apiGet<Partial<WidgetConfig>>(`/admin/api/widget-config/${nextContext}`),
       apiGet<{ versions: VersionItem[] }>(`/admin/api/widget-config/${nextContext}/versions`),
     ])
       .then(([config, versionData]) => {
         const merged = mergeWidgetConfig(config)
-        setCfg(merged)
+        // E12: черновик перезаписывает эфирную версию (публикация сохраняет BASE).
+        let draft: Partial<WidgetConfig> | null = null
+        try {
+          draft = JSON.parse(window.localStorage.getItem(`reviews-draft-${nextContext}`) || 'null')
+        } catch {
+          draft = null
+        }
+        const withDraft = draft ? mergeWidgetConfig({ ...merged, ...draft }) : merged
+        setCfg(withDraft)
         setBaseline(merged)
-        setPreviewCfg(merged)
+        setPreviewCfg(withDraft)
         setVersions(versionData.versions)
       })
       .catch((err) => toast.error(err instanceof Error ? err.message : 'Запрос не выполнен'))
   }
+
+  // E13: активная версия каждого контекста для блока «Контексты» + E3 shopOrigin.
+  useEffect(() => {
+    apiGet<{ shopOrigin?: string }>('/admin/api/settings')
+      .then((s) => setShopOrigin(s.shopOrigin ?? ''))
+      .catch(() => {})
+    Promise.all(
+      (['product', 'homepage'] as WidgetContext[]).map((ctx) =>
+        apiGet<{ versions: VersionItem[] }>(`/admin/api/widget-config/${ctx}/versions`).then((d) => [ctx, d.versions] as const),
+      ),
+    )
+      .then((pairs) => {
+        const map: Record<string, number> = {}
+        pairs.forEach(([ctx, list]) => {
+          const active = list.find((v) => v.active)
+          if (active) map[ctx] = active.version
+        })
+        setContextVersions(map)
+      })
+      .catch(() => {})
+  }, [context])
 
   useEffect(() => load(context), [context])
 
@@ -97,11 +183,52 @@ export default function Editor() {
 
   const dirty = useDirty(cfg, baseline)
   const activeVersion = versions.find((v) => v.active)?.version ?? null
+  const [canUndo, setCanUndo] = useState(false)
+
+  // E1: каждое изменение пушит снапшот в историю (до 60) и сохраняет черновик.
+  function pushHistory(prev: WidgetConfig) {
+    historyRef.current.push(JSON.stringify(prev))
+    if (historyRef.current.length > 60) historyRef.current.shift()
+    setCanUndo(true)
+    try {
+      window.localStorage.setItem(`reviews-draft-${context}`, JSON.stringify(prev))
+    } catch {
+      /* приватный режим — черновик живёт только в памяти */
+    }
+  }
+
+  function undoDraft() {
+    const snap = historyRef.current.pop()
+    if (!snap) return
+    setCanUndo(historyRef.current.length > 0)
+    setCfg(mergeWidgetConfig(JSON.parse(snap)))
+  }
+
+  // E1: ⌘Z / Ctrl+Z.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'z') return
+      const target = e.target as HTMLElement | null
+      if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return
+      e.preventDefault()
+      undoDraft()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   async function publish() {
     try {
       const res = await apiWrite<{ version: number }>('POST', `/admin/api/widget-config/${context}`, cfg)
       toast.success(`Опубликована v${res.version} — уже на сайте`)
+      historyRef.current = []
+      setCanUndo(false)
+      try {
+        window.localStorage.removeItem(`reviews-draft-${context}`)
+      } catch {
+        /* noop */
+      }
       setBaseline(cfg)
       load(context)
     } catch (err) {
@@ -111,30 +238,90 @@ export default function Editor() {
 
   function resetDraft() {
     setCfg(baseline)
+    historyRef.current = []
+    setCanUndo(false)
+    try {
+      window.localStorage.removeItem(`reviews-draft-${context}`)
+    } catch {
+      /* noop */
+    }
     toast.info('Черновик возвращён к эфирной версии')
   }
 
   function patch(partial: Partial<WidgetConfig>) {
-    setCfg((prev) => ({ ...prev, ...partial }))
+    setCfg((prev) => {
+      pushHistory(prev)
+      return { ...prev, ...partial }
+    })
+  }
+
+  // E4: пресет = снапшот всего вида.
+  function applyPreset(presetId: string) {
+    const vars = PRESET_VARS[presetId]
+    if (!vars) return
+    setCfg((prev) => {
+      pushHistory(prev)
+      return mergeWidgetConfig({ ...prev, ...vars, appearance: { preset: vars.appearance?.preset ?? prev.appearance.preset } })
+    })
+    toast.success(`Пресет «${EDITOR_PRESETS.find((p) => p.id === presetId)?.name ?? presetId}» применён`)
   }
 
   const preview = useMemo(() => previewDocument(previewCfg, context), [previewCfg, context])
+  const previewCfgRef = useRef(previewCfg)
+  useEffect(() => {
+    previewCfgRef.current = previewCfg
+  }, [previewCfg])
 
+  // Надёжный монтаж виджета в srcDoc-iframe: inline-скрипт в srcdoc не
+  // исполняется (CSP/srcdoc-квирк Chromium), поэтому монтируем из родителя по onLoad.
+  const previewFrameRef = useRef<HTMLIFrameElement | null>(null)
+  const mountPreviewWidget = useCallback(() => {
+    const frame = previewFrameRef.current
+    if (!frame) return
+    try {
+      const win: Window & { ReviewsWidget?: ReviewsWidgetApi } | null = frame.contentWindow
+      const doc = frame.contentDocument
+      if (!win || !doc || !win.ReviewsWidget) return
+      const root = doc.getElementById('preview')
+      if (root && win.ReviewsWidget.defaultConfig) {
+        win.ReviewsWidget.mount(root, {
+          reviews: win.ReviewsWidget.sampleReviews,
+          productName: context === 'product' ? 'Платье миди «Аметист»' : '',
+          context,
+          config: previewCfgRef.current,
+          submissionUrl: '/api/review-submissions',
+          submissionConfig: { enabled: true, allowedTypes: ['image/jpeg', 'image/png', 'video/mp4'], privacyUrl: '' },
+        })
+      }
+    } catch {
+      /* iframe ещё грузится */
+    }
+  }, [context])
+  // Монтаж после каждого обновления previewCfg (iframe пересоздаётся через srcDoc).
+  useEffect(() => {
+    const frame = previewFrameRef.current
+    if (frame) mountPreviewWidget()
+  }, [preview, mountPreviewWidget])
   return (
     <>
       <div className="ed-tools">
+        <span className="crumb">
+          Виджет / <b>Конструктор</b>
+        </span>
         <select value={context} onChange={(e) => setContext(e.target.value as WidgetContext)} aria-label="Контекст">
           <option value="product">Карточка товара</option>
           <option value="homepage">Главная страница</option>
         </select>
         {activeVersion !== null && <span className="live-badge">В эфире: v{activeVersion}</span>}
         {dirty && <span className="dirty-badge" title="«Сбросить» вернёт эфирную версию">Есть изменения</span>}
+        <button className="quiet" onClick={undoDraft} disabled={!canUndo} title="Отменить последнее действие (⌘Z)">
+          ↶ Отменить
+        </button>
         {dirty && (
           <button className="quiet" onClick={resetDraft} title="Вернуть эфирную версию">
             Сбросить
           </button>
         )}
-        <span className="spacer" />
         <div className="seg" role="group" aria-label="Устройство">
           <button aria-pressed={device === 'desktop'} onClick={() => setDevice('desktop')}>
             Десктоп
@@ -162,10 +349,23 @@ export default function Editor() {
       <div className={`ed${railOff ? ' rail-off' : ''}`}>
         <div className="canvas">
           <div className="hintstrip">
-            <span className="k">Мок-страница магазина</span>
+            <div className="seg" role="group" aria-label="Источник превью">
+              <button aria-pressed={previewSource === 'mock'} onClick={() => setPreviewSource('mock')}>
+                Мок
+              </button>
+              <button
+                aria-pressed={previewSource === 'real'}
+                disabled={!shopOrigin}
+                title={shopOrigin ? undefined : 'Укажите адрес магазина в Настройках'}
+                onClick={() => setPreviewSource('real')}
+              >
+                Страница магазина
+              </button>
+            </div>
             <span>
-              Превью показывает виджет в контексте карточки товара. Изменения в панели применяются сразу;
-              публикация — отдельным действием.
+              {previewSource === 'real'
+                ? 'Прокси-превью: страница получена сервером, скрипты магазина отключены.'
+                : 'Превью на мок-странице товара. Изменения в рельсе применяются сразу; публикация — отдельное действие.'}
             </span>
           </div>
           <div className={`browser${device === 'mobile' ? ' mobile' : ''}`}>
@@ -180,7 +380,16 @@ export default function Editor() {
                 <span>shop-mila.ru/product/plate-42</span>
               </div>
             </div>
-            <iframe title="Предпросмотр виджета" srcDoc={preview} />
+            {previewSource === 'real' && shopOrigin ? (
+              <iframe title="Предпросмотр на странице магазина" src={`/api/preview-page?url=${encodeURIComponent(shopOrigin)}`} />
+            ) : (
+              <iframe
+                title="Предпросмотр виджета"
+                ref={previewFrameRef}
+                srcDoc={preview}
+                onLoad={mountPreviewWidget}
+              />
+            )}
           </div>
         </div>
 
@@ -199,7 +408,7 @@ export default function Editor() {
           {tab === 'mp' && <MarketplacePanel cfg={cfg} patch={patch} />}
           {tab === 'showcase' && <ShowcasePanel />}
           {tab === 'embed' && <EmbedPanel />}
-          {tab === 'versions' && <VersionsPanel versions={versions} context={context} onRollback={rollback} />}
+          {tab === 'versions' && <VersionsPanel versions={versions} context={context} contextVersions={contextVersions} onRollback={rollback} />}
         </aside>
       </div>
     </>
@@ -219,30 +428,35 @@ export default function Editor() {
 /* ============ ВИД ============ */
 
 function LookPanel({ cfg, patch }: { cfg: WidgetConfig; patch: (p: Partial<WidgetConfig>) => void }) {
+  // E2: contrast guard — те же пары, что в макете (04:1832-1837).
+  const cwarn = checkContrast(cfg)
+
+  function patchHeaderElements(key: keyof WidgetConfig['header']['elements'], value: boolean) {
+    patch({ header: { ...cfg.header, elements: { ...cfg.header.elements, [key]: value } } })
+  }
+
   return (
     <>
-      <Group title="Пресеты вида" note={`${widgetPresets.length}`}>
+      <Group title="Пресеты вида" note="4">
         <div className="preset-grid">
-          {widgetPresets.map((p) => (
+          {EDITOR_PRESETS.map((p) => (
             <button
               key={p.id}
               className="preset"
-              aria-pressed={cfg.appearance.preset === p.id}
-              onClick={() => patch({ appearance: { preset: p.id } })}
+              aria-pressed={cfg.appearance.preset === PRESET_VARS[p.id]?.appearance?.preset}
+              onClick={() => applyPresetFrom(p.id, cfg, patch)}
             >
               <span className="thumb" style={{ color: p.color }}>
                 <span className="b1" />
                 <span className="b2" />
-                {p.tiles ? (
-                  <span className="tiles">
-                    <i />
-                    <i />
-                    <i />
-                    <i />
-                  </span>
-                ) : (
-                  <span className="tile" />
-                )}
+                <span className="tiles" style={{ ['--tc' as string]: p.tiles }}>
+                  <i />
+                  <i />
+                  <i />
+                  <i />
+                  <i />
+                  <i />
+                </span>
               </span>
               <b>{p.name}</b>
               <small>{p.hint}</small>
@@ -262,17 +476,28 @@ function LookPanel({ cfg, patch }: { cfg: WidgetConfig; patch: (p: Partial<Widge
             ))}
           </div>
         </label>
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={cfg.visibility.ratingDistribution}
-            onChange={(e) => patch({ visibility: { ...cfg.visibility, ratingDistribution: e.target.checked } })}
-          />
-          <span>
-            <b>Распределение оценок</b>
-            <span className="d">полосы 5★…1★ рядом со сводкой</span>
-          </span>
-        </label>
+        <div className="fld">
+          <span>Элементы шапки</span>
+          <div className="attrflags" style={{ rowGap: 8 }}>
+            {(
+              [
+                ['title', 'Заголовок'],
+                ['rating', 'Оценка'],
+                ['count', 'Счётчик'],
+                ['recommend', 'Рекомендуют'],
+                ['distribution', 'Распределение'],
+              ] as [keyof WidgetConfig['header']['elements'], string][]
+            ).map(([key, label]) => (
+              <label className="check" key={key}>
+                <input type="checkbox" checked={cfg.header.elements[key]} onChange={(e) => patchHeaderElements(key, e.target.checked)} />
+                <b>{label}</b>
+              </label>
+            ))}
+          </div>
+        </div>
+        <span className="hint">
+          Схема меняет компоновку сводки; элементы включаются по одному — пустая шапка скрывается.
+        </span>
       </Group>
 
       <Group title="Вид" open>
@@ -293,6 +518,17 @@ function LookPanel({ cfg, patch }: { cfg: WidgetConfig; patch: (p: Partial<Widge
           <ColorField label="Граница" value={cfg.theme.border} onChange={(value) => patch({ theme: { ...cfg.theme, border: value } })} />
           <ColorField label="Фон карточки" value={cfg.theme.panel} onChange={(value) => patch({ theme: { ...cfg.theme, panel: value } })} />
         </div>
+        {cwarn && (
+          <div className="cwarn">
+            <span className="msg">
+              <b>{cwarn.msg}</b> · контраст {cwarn.ratio.toFixed(2).replace('.', ',')}:1, нужно ≥{' '}
+              {String(cwarn.need).replace('.', ',')}:1
+            </span>
+            <button type="button" className="cwfix" onClick={() => fixContrast(cwarn.key, cfg, patch)}>
+              Исправить
+            </button>
+          </div>
+        )}
         <RangeField
           label="Масштаб текста"
           value={cfg.typography.scale}
@@ -335,16 +571,138 @@ function LookPanel({ cfg, patch }: { cfg: WidgetConfig; patch: (p: Partial<Widge
         <div className="f2">
           <label className="fld">
             <span>Колонки</span>
-            <input type="number" min={1} max={4} value={cfg.layout.columns} onChange={(e) => patch({ layout: { ...cfg.layout, columns: Number(e.target.value) } })} />
+            <select value={String(cfg.layout.columns)} onChange={(e) => patch({ layout: { ...cfg.layout, columns: Number(e.target.value) } })}>
+              {['1', '2', '3', '4'].map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
           </label>
           <label className="fld">
             <span>Порция</span>
-            <input type="number" min={1} max={24} value={cfg.layout.pageSize} onChange={(e) => patch({ layout: { ...cfg.layout, pageSize: Number(e.target.value) } })} />
+            <select value={String(cfg.layout.pageSize)} onChange={(e) => patch({ layout: { ...cfg.layout, pageSize: Number(e.target.value) } })}>
+              {['3', '6', '9', '12'].map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
           </label>
         </div>
       </Group>
 
       <SectionsGroup cfg={cfg} patch={patch} />
+
+      <Group title="Медиа в отзыве" note="фото и видео в карточке" open>
+        <label className="fld">
+          <span>Раскладка</span>
+          <div className="seg" role="group" aria-label="Раскладка медиа">
+            {(
+              [
+                ['row', 'Полоска'],
+                ['grid', 'Сетка'],
+                ['collage', 'Коллаж'],
+                ['one', 'Одна'],
+              ] as [WidgetConfig['layout']['mediacard']['layout'], string][]
+            ).map(([value, label]) => (
+              <button key={value} aria-pressed={cfg.layout.mediacard.layout === value} onClick={() => patch({ layout: { ...cfg.layout, mediacard: { ...cfg.layout.mediacard, layout: value } } })}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </label>
+        <div className="f2">
+          <label className="fld">
+            <span>Формат кадра</span>
+            <select value={cfg.layout.mediacard.aspect} onChange={(e) => patch({ layout: { ...cfg.layout, mediacard: { ...cfg.layout.mediacard, aspect: e.target.value as WidgetConfig['layout']['mediacard']['aspect'] } } })}>
+              <option value="16:10">16:10</option>
+              <option value="1:1">1:1 квадрат</option>
+              <option value="4:5">4:5 портрет</option>
+            </select>
+          </label>
+          <label className="fld">
+            <span>Максимум плиток</span>
+            <select
+              value={String(cfg.layout.mediacard.maxTiles)}
+              onChange={(e) => patch({ layout: { ...cfg.layout, mediacard: { ...cfg.layout.mediacard, maxTiles: Number(e.target.value) as WidgetConfig['layout']['mediacard']['maxTiles'] } } })}
+            >
+              <option value="3">3</option>
+              <option value="4">4</option>
+              <option value="6">6</option>
+            </select>
+          </label>
+        </div>
+        <label className="check">
+          <input type="checkbox" checked={cfg.layout.mediacard.plusMore} onChange={(e) => patch({ layout: { ...cfg.layout, mediacard: { ...cfg.layout.mediacard, plusMore: e.target.checked } } })} />
+          <span>
+            <b>Плитка «+N»</b>
+            <span className="d">остальные медиа открываются в плеере</span>
+          </span>
+        </label>
+      </Group>
+
+      <Group title="Плеер-лента" note="вертикальные видео рядом" open>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={cfg.layout.player.enabled && cfg.layout.sections.includes('player')}
+            onChange={(e) => {
+              const next = e.target.checked
+                ? [...cfg.layout.sections.filter((s) => s !== 'player'), 'player' as WidgetSectionId]
+                : cfg.layout.sections.filter((s) => s !== 'player')
+              patch({ layout: { ...cfg.layout, sections: next, player: { ...cfg.layout.player, enabled: next.includes('player' as WidgetSectionId) } } })
+            }}
+          />
+          <span>
+            <b>Показывать плеер-ленту</b>
+            <span className="d">секция «Плеер-лента» в конструкторе секций</span>
+          </span>
+        </label>
+        <label className="fld">
+          <span>Заголовок</span>
+          <input value={cfg.layout.player.title} onChange={(e) => patch({ layout: { ...cfg.layout, player: { ...cfg.layout.player, title: e.target.value } } })} />
+        </label>
+        <div className="f2">
+          <label className="fld">
+            <span>Формат плитки</span>
+            <select
+              value={cfg.layout.player.tile.aspect}
+              onChange={(e) => patch({ layout: { ...cfg.layout, player: { ...cfg.layout.player, tile: { ...cfg.layout.player.tile, aspect: e.target.value as WidgetConfig['layout']['player']['tile']['aspect'] } } } })}
+            >
+              <option value="9:16">9:16 вертикальный</option>
+              <option value="3:4">3:4 портрет</option>
+              <option value="1:1">1:1 квадрат</option>
+            </select>
+          </label>
+          <RangeField
+            label="Ширина"
+            value={cfg.layout.player.tile.width}
+            min={120}
+            max={200}
+            step={4}
+            format={(v) => `${v}px`}
+            onChange={(v) => patch({ layout: { ...cfg.layout, player: { ...cfg.layout.player, tile: { ...cfg.layout.player.tile, width: v } } } })}
+          />
+        </div>
+        <div className="fld">
+          <span>Подписи на плитке</span>
+          <div className="attrflags">
+            <label className="check">
+              <input type="checkbox" checked={cfg.layout.player.showAuthor} onChange={(e) => patch({ layout: { ...cfg.layout, player: { ...cfg.layout.player, showAuthor: e.target.checked } } })} />
+              <b>Автор</b>
+            </label>
+            <label className="check">
+              <input type="checkbox" checked={cfg.layout.player.showLikes} onChange={(e) => patch({ layout: { ...cfg.layout, player: { ...cfg.layout.player, showLikes: e.target.checked } } })} />
+              <b>Лайки</b>
+            </label>
+            <label className="check">
+              <input type="checkbox" checked={cfg.layout.player.showSourceBadge} onChange={(e) => patch({ layout: { ...cfg.layout, player: { ...cfg.layout.player, showSourceBadge: e.target.checked } } })} />
+              <b>Площадка</b>
+            </label>
+          </div>
+        </div>
+      </Group>
 
       <Group title="Продвинутое" note="реже нужное">
         <label className="check">
@@ -371,11 +729,32 @@ function LookPanel({ cfg, patch }: { cfg: WidgetConfig; patch: (p: Partial<Widge
         <label className="fld">
           <span>Шрифт</span>
           <select
-            value={cfg.typography.inheritSite ? 'inherit' : 'site'}
-            onChange={(e) => patch({ typography: { ...cfg.typography, inheritSite: e.target.value === 'inherit' } })}
+            value={cfg.typography.inheritSite ? 'inherit' : cfg.typography.fontFamily.includes('Manrope') ? 'manrope' : cfg.typography.fontFamily.includes('Onest') ? 'onest' : 'custom'}
+            onChange={(e) => {
+              const v = e.target.value
+              if (v === 'inherit') {
+                patch({ typography: { ...cfg.typography, inheritSite: true } })
+              } else if (v === 'onest') {
+                patch({ typography: { ...cfg.typography, inheritSite: false, fontFamily: 'Onest, ui-sans-serif, system-ui, sans-serif' } })
+              } else if (v === 'manrope') {
+                patch({ typography: { ...cfg.typography, inheritSite: false, fontFamily: "Manrope, system-ui, sans-serif" } })
+              } else {
+                const custom = window.prompt('Свой CSS-стек шрифта:', cfg.typography.fontFamily)
+                if (custom !== null && custom.trim()) patch({ typography: { ...cfg.typography, inheritSite: false, fontFamily: custom.trim() } })
+              }
+            }}
           >
-            <option value="site">Onest (встроенный)</option>
+            <option value="onest">Onest (встроенный)</option>
             <option value="inherit">Наследовать сайт</option>
+            <option value="manrope">Manrope</option>
+            <option value="custom">Свой CSS-стек…</option>
+          </select>
+        </label>
+        <label className="fld">
+          <span>Пагинация</span>
+          <select value={cfg.layout.pagination} onChange={(e) => patch({ layout: { ...cfg.layout, pagination: e.target.value as WidgetConfig['layout']['pagination'] } })}>
+            <option value="more">Кнопка «Показать ещё»</option>
+            <option value="pages">Страницы</option>
           </select>
         </label>
         <label className="check">
@@ -386,84 +765,9 @@ function LookPanel({ cfg, patch }: { cfg: WidgetConfig; patch: (p: Partial<Widge
           />
           <span>
             <b>Бейдж источника</b>
-            <span className="d">WB/Ozon/ЯМ на карточке</span>
+            <span className="d">WB/Ozon/ЯМ на плитке</span>
           </span>
         </label>
-
-        <div className="fld" style={{ border: 0, paddingTop: 0 }}>
-          <span>Ответ продавца</span>
-          <div className="seg" role="group" aria-label="Стиль ответа">
-            {(['card', 'plain', 'bubble', 'accent'] as const).map((s) => (
-              <button key={s} aria-pressed={cfg.answers.style === s} onClick={() => patch({ answers: { ...cfg.answers, style: s } })}>
-                {s === 'card' ? 'Карточка' : s === 'plain' ? 'Тонкая' : s === 'bubble' ? 'Пузырь' : 'Акцент'}
-              </button>
-            ))}
-          </div>
-        </div>
-        <ColorField label="Цвет ответа" value={cfg.answers.color} onChange={(value) => patch({ answers: { ...cfg.answers, color: value } })} />
-        <label className="check">
-          <input type="checkbox" checked={cfg.answers.showTitle} onChange={(e) => patch({ answers: { ...cfg.answers, showTitle: e.target.checked } })} />
-          <span>
-            <b>Заголовок ответа</b>
-            <span className="d">«Ответ продавца» над текстом</span>
-          </span>
-        </label>
-        <label className="fld">
-          <span>Свой заголовок (необязательно)</span>
-          <input
-            value={cfg.answers.title}
-            placeholder="Ответ продавца"
-            onChange={(e) => patch({ answers: { ...cfg.answers, title: e.target.value } })}
-          />
-        </label>
-
-        <div className="fld">
-          <span>Плеер · оформление</span>
-          <div className="seg" role="group" aria-label="Хром плеера">
-            <button aria-pressed={cfg.viewer.chrome === 'full'} onClick={() => patch({ viewer: { ...cfg.viewer, chrome: 'full' } })}>
-              Полный
-            </button>
-            <button aria-pressed={cfg.viewer.chrome === 'min'} onClick={() => patch({ viewer: { ...cfg.viewer, chrome: 'min' } })}>
-              Минималистичный
-            </button>
-          </div>
-        </div>
-        <label className="check">
-          <input type="checkbox" checked={cfg.viewer.showOriginal} onChange={(e) => patch({ viewer: { ...cfg.viewer, showOriginal: e.target.checked } })} />
-          <span>
-            <b>«Открыть оригинал»</b>
-            <span className="d">ссылка на отзыв на площадке</span>
-          </span>
-        </label>
-        <label className="check">
-          <input type="checkbox" checked={cfg.viewer.showCounter} onChange={(e) => patch({ viewer: { ...cfg.viewer, showCounter: e.target.checked } })} />
-          <span>
-            <b>Счётчик медиа</b>
-          </span>
-        </label>
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={cfg.layout.video.autoplayInViewer}
-            onChange={(e) => patch({ layout: { ...cfg.layout, video: { ...cfg.layout.video, autoplayInViewer: e.target.checked } } })}
-          />
-          <span>
-            <b>Автопроигрывание в плеере</b>
-            <span className="d">без звука</span>
-          </span>
-        </label>
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={cfg.layout.video.productPanel}
-            onChange={(e) => patch({ layout: { ...cfg.layout, video: { ...cfg.layout.video, productPanel: e.target.checked } } })}
-          />
-          <span>
-            <b>Панель товара в плеере</b>
-            <span className="d">фото и цена рядом с медиа</span>
-          </span>
-        </label>
-
         <div className="f2">
           <label className="fld">
             <span>Стена: мин. ширина</span>
@@ -489,6 +793,85 @@ function LookPanel({ cfg, patch }: { cfg: WidgetConfig; patch: (p: Partial<Widge
       </Group>
     </>
   )
+}
+
+// E4: применить пресет-снапшот (из LookPanel; функция на уровне модуля, т.к. applyPreset живёт в Editor).
+function applyPresetFrom(presetId: string, cfg: WidgetConfig, patch: (p: Partial<WidgetConfig>) => void) {
+  const vars = PRESET_VARS[presetId]
+  if (!vars) return
+  patch({ ...vars, appearance: { preset: vars.appearance?.preset ?? cfg.appearance.preset } })
+}
+
+// E2: contrast guard — WCAG-пары из макета 04-editor (04:1832-1843).
+const CPAIRS: { key: string; need: number; msg: string }[] = [
+  { key: 'star', need: 3, msg: 'Звёзды сливаются с фоном карточки' },
+  { key: 'text', need: 4.5, msg: 'Текст отзывов почти не читается на фоне' },
+  { key: 'muted', need: 4.5, msg: 'Приглушённый текст слишком бледный' },
+  { key: 'accink', need: 4.5, msg: 'Текст на акцентном фоне нечитаем' },
+]
+
+function hexLum(hex: string): number {
+  const rgb = hexToRgb(hex)
+  if (!rgb) return 1
+  const [r, g, b] = rgb.map((v) => {
+    const c = v / 255
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)
+  })
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b
+}
+
+function hexToRgb(hex: string): [number, number, number] | null {
+  let h = String(hex || '').replace('#', '')
+  if (h.length === 3) h = h.split('').map((c) => c + c).join('')
+  if (!/^[0-9a-fA-F]{6}$/.test(h)) return null
+  const n = parseInt(h, 16)
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+}
+
+function contrastRatio(a: string, b: string): number {
+  const l1 = hexLum(a)
+  const l2 = hexLum(b)
+  return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05)
+}
+
+function mixHex(a: string, b: string, t: number): string {
+  const A = hexToRgb(a) ?? [0, 0, 0]
+  const B = hexToRgb(b) ?? [0, 0, 0]
+  return '#' + A.map((v, i) => Math.round(v + (B[i] - v) * t).toString(16).padStart(2, '0')).join('')
+}
+
+type ContrastWarn = { key: string; need: number; msg: string; ratio: number } | null
+
+function checkContrast(cfg: WidgetConfig): ContrastWarn {
+  const panelEff = cfg.theme.dark ? '#1E1A26' : cfg.theme.panel
+  const fg = (key: string) => {
+    if (key === 'accink') return cfg.theme.accentInk
+    if (cfg.theme.dark) return ({ star: '#C99A3F', text: '#F1EEF7', muted: '#A79FB5' } as Record<string, string>)[key] ?? cfg.theme[key as 'text']
+    return cfg.theme[key as 'text' | 'muted' | 'star']
+  }
+  for (const p of CPAIRS) {
+    const against = p.key === 'accink' ? cfg.theme.accent : panelEff
+    const ratio = contrastRatio(fg(p.key), against)
+    if (ratio < p.need) return { ...p, ratio }
+  }
+  return null
+}
+
+function fixContrast(key: string, cfg: WidgetConfig, patch: (p: Partial<WidgetConfig>) => void) {
+  const p = CPAIRS.find((x) => x.key === key)
+  if (!p) return
+  const target = key === 'accink' ? cfg.theme.accent : cfg.theme.dark ? '#1E1A26' : cfg.theme.panel
+  const goal = hexLum(target) > 0.4 ? '#000000' : '#ffffff'
+  const from = key === 'accink' ? cfg.theme.accentInk : cfg.theme[key as 'text' | 'muted' | 'star']
+  let cur = from
+  for (let i = 1; i <= 16; i++) {
+    cur = mixHex(from, goal, i * 0.08)
+    if (contrastRatio(cur, target) >= p.need) break
+  }
+  if (key === 'accink') patch({ theme: { ...cfg.theme, accentInk: cur } })
+  else if (key === 'star') patch({ theme: { ...cfg.theme, star: cur } })
+  else if (key === 'muted') patch({ theme: { ...cfg.theme, muted: cur } })
+  toast.info('Цвет подправлен до читаемого контраста')
 }
 
 function modeLabel(m: WidgetConfig['layout']['mode']) {
@@ -743,10 +1126,12 @@ function SelectPanel({ cfg, patch }: { cfg: WidgetConfig; patch: (p: Partial<Wid
 function FormPanel({ cfg, patch }: { cfg: WidgetConfig; patch: (p: Partial<WidgetConfig>) => void }) {
   const labels = cfg.labels ?? { writeReview: '', readMore: '' }
   const formEnabled = cfg.layout.sections.includes('form')
+  const fieldCount =
+    2 + (labels.writeReview ? 0 : 0) + cfg.customFields.length + (cfg.typography.inheritSite ? 0 : 0)
 
   return (
     <>
-      <Group title="Форма отзыва" note={formEnabled ? 'включена' : 'выключена'} open>
+      <Group title="Форма отзыва" note={`${fieldCount + 3} полей`} open>
         <label className="check">
           <input
             type="checkbox"
@@ -762,6 +1147,91 @@ function FormPanel({ cfg, patch }: { cfg: WidgetConfig; patch: (p: Partial<Widge
             <b>Показывать форму</b>
             <span className="d">секция «Форма отзыва» в конструкторе секций</span>
           </span>
+        </label>
+        <label className="fld">
+          <span>Режим открытия</span>
+          <div className="seg" role="group" aria-label="Режим формы">
+            <button aria-pressed={cfg.form.mode === 'button'} onClick={() => patch({ form: { ...cfg.form, mode: 'button' } })}>
+              По кнопке
+            </button>
+            <button aria-pressed={cfg.form.mode === 'inline'} onClick={() => patch({ form: { ...cfg.form, mode: 'inline' } })}>
+              Развёрнутая
+            </button>
+          </div>
+        </label>
+        <div className="f2">
+          <label className="fld">
+            <span>Заголовок формы</span>
+            <input value={cfg.form.title} onChange={(e) => patch({ form: { ...cfg.form, title: e.target.value } })} />
+          </label>
+          <label className="fld">
+            <span>Кнопка отправки</span>
+            <input value={cfg.form.submitLabel} onChange={(e) => patch({ form: { ...cfg.form, submitLabel: e.target.value } })} />
+          </label>
+        </div>
+        <div className="fld">
+          <span>Поля формы</span>
+          <div className="attrflags" style={{ rowGap: 8 }}>
+            <label className="check">
+              <input type="checkbox" checked readOnly disabled />
+              <b>Имя</b>
+              <span className="d">обязательное поле</span>
+            </label>
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={cfg.form.fields.title}
+                onChange={(e) => patch({ form: { ...cfg.form, fields: { ...cfg.form.fields, title: e.target.checked } } })}
+              />
+              <b>Заголовок</b>
+            </label>
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={cfg.form.fields.email}
+                onChange={(e) => patch({ form: { ...cfg.form, fields: { ...cfg.form.fields, email: e.target.checked } } })}
+              />
+              <b>Email</b>
+            </label>
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={cfg.form.fields.media}
+                onChange={(e) => patch({ form: { ...cfg.form, fields: { ...cfg.form.fields, media: e.target.checked } } })}
+              />
+              <b>Фото и видео</b>
+            </label>
+            <label className="check">
+              <input type="checkbox" checked readOnly disabled />
+              <b>Согласие</b>
+              <span className="d">обязательное поле</span>
+            </label>
+          </div>
+        </div>
+        <div className="f2">
+          <label className="fld">
+            <span>Медиа: максимум</span>
+            <select
+              value={String(cfg.form.maxMedia)}
+              onChange={(e) => patch({ form: { ...cfg.form, maxMedia: Number(e.target.value) as 1 | 3 | 6 } })}
+            >
+              <option value="1">1</option>
+              <option value="3">3</option>
+              <option value="6">6</option>
+            </select>
+          </label>
+          <label className="fld">
+            <span>Подпись у медиа</span>
+            <input value={cfg.form.mediaHint} onChange={(e) => patch({ form: { ...cfg.form, mediaHint: e.target.value } })} />
+          </label>
+        </div>
+        <label className="fld">
+          <span>CTA: текст</span>
+          <input value={cfg.form.cta.text} onChange={(e) => patch({ form: { ...cfg.form, cta: { ...cfg.form.cta, text: e.target.value } } })} />
+        </label>
+        <label className="fld">
+          <span>CTA: подпись</span>
+          <input value={cfg.form.cta.hint} onChange={(e) => patch({ form: { ...cfg.form, cta: { ...cfg.form.cta, hint: e.target.value } } })} />
         </label>
         <label className="fld">
           <span>Кнопка «Написать отзыв»</span>
@@ -780,8 +1250,29 @@ function FormPanel({ cfg, patch }: { cfg: WidgetConfig; patch: (p: Partial<Widge
           />
         </label>
         <span className="hint">
-          Оценка и текст — обязательные поля. Согласие и правила публикации настраиваются на странице «Настройки».
+          Оценка и текст — обязательные поля. Режим «По кнопке»: секция превращается в CTA-полосу, форма открывается поп-апом.
         </span>
+      </Group>
+
+      <Group title="Подсветка в отзыве" note="кастомные теги" open>
+        <label className="fld">
+          <span>Стиль подсветки</span>
+          <div className="seg" role="group" aria-label="Стиль подсветки">
+            <button aria-pressed={cfg.customTags.display === 'chips'} onClick={() => patch({ customTags: { ...cfg.customTags, display: 'chips' } })}>
+              Чипы
+            </button>
+            <button aria-pressed={cfg.customTags.display === 'string'} onClick={() => patch({ customTags: { ...cfg.customTags, display: 'string' } })}>
+              Строка
+            </button>
+          </div>
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={cfg.customTags.chipLabel} onChange={(e) => patch({ customTags: { ...cfg.customTags, chipLabel: e.target.checked } })} />
+          <span>
+            <b>Подпись в чипе</b>
+            <span className="d">«Рост 164» вместо просто «164»</span>
+          </span>
+        </label>
       </Group>
 
       <Group title="Настраиваемые поля" note={`${cfg.customFields.length} из 6`} open>
@@ -796,7 +1287,7 @@ function CustomFieldsEditor({ fields, onChange }: { fields: CustomFieldDef[]; on
     onChange(fields.map((field, i) => (i === index ? { ...field, ...p } : field)))
   }
   function add() {
-    onChange([...fields, { id: '', label: '', type: 'select', options: ['', ''], required: false, filterable: false, showInReview: true, showInSummary: false }])
+    onChange([...fields, { id: `field_${Date.now().toString(36)}`, label: '', type: 'select', options: ['', ''], required: false, filterable: false, showInReview: true, showInSummary: false }])
   }
   return (
     <>
@@ -820,11 +1311,6 @@ function CustomFieldsEditor({ fields, onChange }: { fields: CustomFieldDef[]; on
               <option value="select">Список</option>
               <option value="text">Текст</option>
             </select>
-            <input
-              value={field.id}
-              placeholder="id: height"
-              onChange={(e) => update(index, { id: e.target.value })}
-            />
           </div>
           {field.type !== 'text' && (
             <input
@@ -866,6 +1352,28 @@ function CustomFieldsEditor({ fields, onChange }: { fields: CustomFieldDef[]; on
 /* ============ ПЛОЩАДКИ ============ */
 
 function MarketplacePanel({ cfg, patch }: { cfg: WidgetConfig; patch: (p: Partial<WidgetConfig>) => void }) {
+  // E16: счётчики отзывов и статусы доступов.
+  const [byMarketplace, setByMarketplace] = useState<Record<string, number>>({})
+  const [statuses, setStatuses] = useState<Record<string, { configured: boolean; enabled: boolean }>>({})
+  useEffect(() => {
+    apiGet<{ by_marketplace?: Record<string, number> }>('/admin/api/dashboard')
+      .then((d) => setByMarketplace(d.by_marketplace ?? {}))
+      .catch(() => {})
+    apiGet<{ marketplaces: { id: string; configured: boolean; enabled: boolean }[] }>('/admin/api/marketplaces')
+      .then((d) => {
+        const map: Record<string, { configured: boolean; enabled: boolean }> = {}
+        d.marketplaces.forEach((m) => {
+          map[m.id] = { configured: m.configured, enabled: m.enabled }
+        })
+        setStatuses(map)
+      })
+      .catch(() => {})
+  }, [])
+  const mpBadges: Record<string, { text: string; cls: string }> = {
+    wb: { text: `${byMarketplace.wb ?? 0} отзывов`, cls: 'bag-ok' },
+    ym: { text: 'выключен', cls: 'bag-neutral' },
+    ozon: { text: statuses.ozon?.configured ? 'готов' : 'нет доступов', cls: statuses.ozon?.configured ? 'bag-ok' : 'bag-warn' },
+  }
   function setPolicy<K extends keyof MarketplacePolicy>(
     marketplace: keyof WidgetConfig['marketplacePolicy'],
     key: K,
@@ -885,10 +1393,14 @@ function MarketplacePanel({ cfg, patch }: { cfg: WidgetConfig; patch: (p: Partia
         const policy = cfg.marketplacePolicy[mp]
         return (
           <div key={mp} style={{ display: 'grid', gap: 10, borderTop: mp === 'wb' ? undefined : '1px dashed var(--border)', paddingTop: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <b style={{ fontSize: 13.5 }}>{marketplaceLabels[mp]}</b>
+              <span className={`bag ${mpBadges[mp].cls}`}>{mpBadges[mp].text}</span>
+            </div>
             <label className="check">
               <input type="checkbox" checked={!policy.hidden} onChange={(e) => setPolicy(mp, 'hidden', !e.target.checked)} />
               <span>
-                <b>Показывать отзывы {marketplaceLabels[mp]}</b>
+                <b>Показывать отзывы</b>
               </span>
             </label>
             <label className="fld">
@@ -917,21 +1429,20 @@ function MarketplacePanel({ cfg, patch }: { cfg: WidgetConfig; patch: (p: Partia
   )
 }
 
-/* ============ ВЕРСИИ ============ */
-
 function VersionsPanel({
   versions,
   context,
+  contextVersions,
   onRollback,
 }: {
   versions: VersionItem[]
   context: WidgetContext
+  contextVersions: Record<string, number>
   onRollback: (version: number) => void
 }) {
-  const contextLabel = context === 'product' ? 'Карточка товара' : 'Главная страница'
   return (
     <>
-      <Group title="Версии конфига" note={contextLabel} open>
+      <Group title="Версии конфига" note={context === 'product' ? 'карточка товара' : 'главная страница'} open>
         {versions.length === 0 && <p className="hint">Версий пока нет — опубликуйте первую.</p>}
         <div className="rows">
           {versions.map((item) => (
@@ -956,11 +1467,15 @@ function VersionsPanel({
         <div className="rows">
           <div className="rowl">
             <b>Карточка товара</b>
-            <span className="d">configContext: product</span>
+            <span className="tag" style={{ color: contextVersions.product ? 'var(--ok)' : 'var(--soft-muted)' }}>
+              {contextVersions.product ? `v${contextVersions.product} активна` : 'нет версий'}
+            </span>
           </div>
           <div className="rowl">
             <b>Главная страница</b>
-            <span className="d">configContext: homepage</span>
+            <span className="tag" style={{ color: contextVersions.homepage ? 'var(--ok)' : 'var(--soft-muted)' }}>
+              {contextVersions.homepage ? `v${contextVersions.homepage} активна` : 'нет версий'}
+            </span>
           </div>
         </div>
         <span className="hint">Переключается селектором «Карточка товара / Главная страница» в панели сверху.</span>
@@ -968,7 +1483,6 @@ function VersionsPanel({
     </>
   )
 }
-
 /* ============ общие блоки ============ */
 
 function Group({ title, note, open = true, children }: { title: string; note?: string; open?: boolean; children: React.ReactNode }) {
@@ -1083,9 +1597,10 @@ function previewDocument(config: WidgetConfig, context: WidgetContext) {
       reviews: ReviewsWidget.sampleReviews,
       productName: ${JSON.stringify(productName)},
       context: ${contextJson},
-      config: ${configJson}
+      config: ${configJson},
+      submissionUrl: '/api/review-submissions',
+      submissionConfig: { enabled: true, allowedTypes: ["image/jpeg", "image/png", "video/mp4"], privacyUrl: "" }
     });
-  </script>
 </body>
 </html>`
 }

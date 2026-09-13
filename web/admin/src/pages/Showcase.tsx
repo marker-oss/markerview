@@ -9,6 +9,13 @@ export default function ShowcasePanel() {
   const [baseline, setBaseline] = useState<ShowcaseRule | null>(null)
   const [loadError, setLoadError] = useState('')
   const dirty = useDirty(rule, baseline)
+  const [shopOrigin, setShopOrigin] = useState('')
+
+  useEffect(() => {
+    apiGet<{ shopOrigin?: string }>('/admin/api/settings')
+      .then((s) => setShopOrigin(s.shopOrigin ?? ''))
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     apiGet<ShowcaseRule>('/admin/api/showcase-rule')
@@ -46,8 +53,8 @@ export default function ShowcasePanel() {
         <div className="ghead"><b>Витрина на главной</b><span className="n">бывш. страница «Витрина»</span></div>
         <div className="gbody">
           <p className="hint">
-            Витрина — <b style={{ color: 'var(--ink)' }}>какие отзывы попадают в подборку на главной странице</b>{' '}
-            магазина. Оформление и секции настраиваются во вкладке «Вид».
+            Витрина — <b style={{ color: 'var(--ink)' }}>какие отзывы показывать на главной странице магазина</b>{' '}
+            (подборка /api/showcase). Оформление и секции настраиваются во вкладке «Вид».
           </p>
           <label className="fld">
             <span>Минимальная оценка</span>
@@ -85,6 +92,17 @@ export default function ShowcasePanel() {
               <span className="d">фотоотзывы заметнее в подборке</span>
             </span>
           </label>
+          <label className="check">
+            <input type="checkbox" checked readOnly disabled />
+            <span>
+              <b>Закрепленные первыми</b>
+              <span className="d">выбранные вручную отзывы всегда в начале (порядок закрепления)</span>
+            </span>
+          </label>
+          <div className="fld">
+            <span>Сейчас закреплено</span>
+            <PinnedRow article={shopOrigin} />
+          </div>
           <button disabled={!dirty} onClick={save}>
             Сохранить витрину
           </button>
@@ -94,6 +112,26 @@ export default function ShowcasePanel() {
           </span>
         </div>
       </div>
+    </div>
+  )
+}
+
+function PinnedRow({ article }: { article: string }) {
+  const [pins, setPins] = useState<number[]>([])
+  useEffect(() => {
+    apiGet<{ reviewIds: number[] }>(`/admin/api/articles/${encodeURIComponent(article)}/pins`)
+      .then((d) => setPins(d.reviewIds))
+      .catch(() => {})
+  }, [article])
+  if (!pins.length) return <span className="hint">Закреплённых отзывов нет.</span>
+  return (
+    <div className="rows">
+      {pins.map((id) => (
+        <div className="rowl" key={id}>
+          <b>#{id}</b>
+          <span className="tag" style={{ color: 'var(--accent-deep)' }}>закреплён</span>
+        </div>
+      ))}
     </div>
   )
 }

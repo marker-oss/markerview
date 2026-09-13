@@ -716,6 +716,38 @@ label.fld,
   color: var(--admin-text);
 }
 
+/* E2: contrast guard */
+.cwarn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-size: 12px;
+  font-weight: 600;
+}
+.cwarn .msg {
+  min-width: 0;
+}
+.cwarn b {
+  color: var(--warn);
+  font-weight: 800;
+}
+.cwarn .cwfix {
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 0;
+  background: var(--warn);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  flex: none;
+  cursor: pointer;
+}
+
 .top .spacer {
   flex: 1;
 }
@@ -2270,7 +2302,7 @@ small {
 
 .ed {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 400px;
+  grid-template-columns: minmax(0, 1fr) 432px;
   min-height: calc(100vh - 56px);
   overflow: clip;
   transition: grid-template-columns 200ms var(--ease-out);

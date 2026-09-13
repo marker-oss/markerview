@@ -44,6 +44,7 @@ window.REVIEWS_EMBED_CONFIG = ${json};
       <div className="grp open">
         <div className="ghead"><b>Подключение на сайт</b><span className="n">бывш. «Встраивание»</span></div>
         <div className="gbody">
+          <PlatformRecipes />
           <div className="steps">
             <div className="step">
               <span className="num">1</span>
@@ -107,6 +108,38 @@ window.REVIEWS_EMBED_CONFIG = ${json};
           </p>
         </div>
       </div>
+    </div>
+  )
+}
+
+// E11: платформенные рецепты из макета 04-editor (04:1874-1888).
+const EMBED_RECIPES: { id: string; label: string; how: string; tip?: string }[] = [
+  { id: 'manual', label: 'Вручную', how: 'Вставьте перед </body> шаблона товара или в диспетчере тегов' },
+  { id: 'tilda', label: 'Tilda', how: 'Блок T123 «HTML-код» на странице товара или в шаблон «Товар» (Настройки сайта → Ещё)', tip: 'Опубликуйте страницу Tilda — черновик не отдаёт скрипт на живой сайт.' },
+  { id: 'insales', label: 'InSales', how: 'Админка → Дизайн → Шаблоны → «Товар» → перед </body>' },
+  { id: 'wordpress', label: 'WordPress', how: 'Хук wp_footer в functions.php дочерней темы или плагин-инжектор сниппетов' },
+  { id: 'gtm', label: 'GTM', how: 'Тег «Custom HTML» с триггером на страницах товаров, затем опубликуйте контейнер', tip: 'Контейнер GTM должен быть опубликован — иначе сервер не увидит сниппет.' },
+]
+
+function PlatformRecipes() {
+  const [active, setActive] = useState('manual')
+  const recipe = EMBED_RECIPES.find((r) => r.id === active) ?? EMBED_RECIPES[0]
+  return (
+    <div className="fld" style={{ gap: 8 }}>
+      <span>Куда вставляем</span>
+      <div className="seg" role="group" aria-label="Платформа">
+        {EMBED_RECIPES.map((r) => (
+          <button key={r.id} aria-pressed={active === r.id} onClick={() => setActive(r.id)}>
+            {r.label}
+          </button>
+        ))}
+      </div>
+      <span className="hint">{recipe.how}</span>
+      {recipe.tip && (
+        <p className="hint" style={{ color: 'var(--warn)', fontWeight: 600 }}>
+          ⚠ {recipe.tip}
+        </p>
+      )}
     </div>
   )
 }

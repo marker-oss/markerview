@@ -6,10 +6,11 @@ export type MarketplacePolicy = {
   showSourceLinks: boolean
 }
 
-export type WidgetSectionId = 'summary' | 'media' | 'filters' | 'list' | 'form'
+export type WidgetSectionId = 'summary' | 'player' | 'media' | 'filters' | 'list' | 'form'
 
 export const widgetSectionLabels: Record<WidgetSectionId, string> = {
-  summary: 'Сводка (оценка и распределение)',
+  summary: 'Сводка и распределение',
+  player: 'Плеер-лента',
   media: 'Лента фото и видео',
   filters: 'Панель фильтров',
   list: 'Список отзывов',
@@ -69,10 +70,6 @@ export type WidgetConfig = {
     radius: number
     density: 'comfortable' | 'compact'
   }
-  header: {
-    title: string
-    layout: 'row' | 'stack' | 'center'
-  }
   answers: {
     style: 'card' | 'plain' | 'bubble' | 'accent'
     color: string
@@ -83,6 +80,17 @@ export type WidgetConfig = {
     chrome: 'full' | 'min'
     showOriginal: boolean
     showCounter: boolean
+  }
+  header: {
+    title: string
+    layout: 'row' | 'stack' | 'center'
+    elements: {
+      title: boolean
+      rating: boolean
+      count: boolean
+      recommend: boolean
+      distribution: boolean
+    }
   }
   filters: {
     layout: 'rows' | 'dropdowns' | 'chips'
@@ -99,6 +107,28 @@ export type WidgetConfig = {
     columns: number
     pageSize: number
     pagination: 'more' | 'pages'
+    mediacard: {
+      layout: 'row' | 'grid' | 'collage' | 'one'
+      aspect: '16:10' | '1:1' | '4:5'
+      maxTiles: 3 | 4 | 6
+      plusMore: boolean
+    }
+    player: {
+      enabled: boolean
+      title: string
+      tile: {
+        aspect: '9:16' | '3:4' | '1:1'
+        width: number
+      }
+      showAuthor: boolean
+      showLikes: boolean
+      showSourceBadge: boolean
+      autoAdvance: {
+        enabled: boolean
+        intervalSec: number
+        pauseOnHover: boolean
+      }
+    }
     sections: WidgetSectionId[]
     video: {
       aspect: '3:4' | '9:16' | '1:1'
@@ -134,11 +164,27 @@ export type WidgetConfig = {
     photoFirst: boolean
     onlyWithAnswer: boolean
   }
+  form: {
+    mode: 'inline' | 'button'
+    title: string
+    submitLabel: string
+    fields: { title: boolean; email: boolean; media: boolean }
+    maxMedia: 1 | 3 | 6
+    mediaHint: string
+    cta: {
+      text: string
+      hint: string
+    }
+  }
+  customTags: {
+    display: 'chips' | 'string'
+    chipLabel: boolean
+  }
+  customFields: CustomFieldDef[]
   ranking: {
     field: 'pinned' | 'hasPhoto' | 'hasText' | 'rating' | 'createdAt'
     direction: 'asc' | 'desc'
   }[]
-  customFields: CustomFieldDef[]
   marketplacePolicy: Record<'wb' | 'ym' | 'ozon', MarketplacePolicy>
 }
 
@@ -157,7 +203,7 @@ export const defaultWidgetConfig: WidgetConfig = {
     dark: false,
   },
   typography: {
-    fontFamily: 'Onest, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    fontFamily: '',
     inheritSite: false,
     scale: 1,
     radius: 16,
@@ -167,11 +213,26 @@ export const defaultWidgetConfig: WidgetConfig = {
     mode: 'list',
     columns: 2,
     pageSize: 3,
-    sections: ['summary', 'media', 'filters', 'list', 'form'],
+    sections: ['summary', 'player', 'media', 'filters', 'list', 'form'],
     pagination: 'more',
+    mediacard: {
+      layout: 'row',
+      aspect: '16:10',
+      maxTiles: 4,
+      plusMore: true,
+    },
+    player: {
+      enabled: true,
+      title: 'Видео покупателей',
+      tile: { aspect: '9:16', width: 156 },
+      showAuthor: true,
+      showLikes: true,
+      showSourceBadge: true,
+      autoAdvance: { enabled: true, intervalSec: 5, pauseOnHover: true },
+    },
     video: {
       aspect: '9:16',
-      tileWidth: 260,
+      tileWidth: 156,
       showSourceBadge: true,
       showAuthor: true,
       autoplayInViewer: true,
@@ -186,6 +247,7 @@ export const defaultWidgetConfig: WidgetConfig = {
   header: {
     title: 'Отзывы покупателей',
     layout: 'row',
+    elements: { title: true, rating: true, count: true, recommend: true, distribution: true },
   },
   answers: {
     style: 'card',
@@ -207,6 +269,19 @@ export const defaultWidgetConfig: WidgetConfig = {
   labels: {
     writeReview: '',
     readMore: '',
+  },
+  form: {
+    mode: 'inline',
+    title: 'Оставить отзыв',
+    submitLabel: 'Отправить отзыв',
+    fields: { title: true, email: true, media: true },
+    maxMedia: 3,
+    mediaHint: 'Фото до 8 МБ · видео до 50 МБ',
+    cta: { text: 'Оставить отзыв', hint: 'Помогите другим покупателям — оценка, текст, фото или видео' },
+  },
+  customTags: {
+    display: 'chips',
+    chipLabel: true,
   },
   visibility: {
     photos: true,
@@ -278,20 +353,42 @@ export function mergeWidgetConfig(value: Partial<WidgetConfig>): WidgetConfig {
     appearance: { ...defaultWidgetConfig.appearance, ...(value.appearance ?? {}) },
     theme: { ...defaultWidgetConfig.theme, ...(value.theme ?? {}) },
     typography: { ...defaultWidgetConfig.typography, ...(value.typography ?? {}) },
-    header: { ...defaultWidgetConfig.header, ...(value.header ?? {}) },
+    header: {
+      ...defaultWidgetConfig.header,
+      ...(value.header ?? {}),
+      elements: { ...defaultWidgetConfig.header.elements, ...(value.header?.elements ?? {}) },
+    },
     answers: { ...defaultWidgetConfig.answers, ...(value.answers ?? {}) },
     viewer: { ...defaultWidgetConfig.viewer, ...(value.viewer ?? {}) },
     filters: { ...defaultWidgetConfig.filters, ...(value.filters ?? {}) },
+    visibility: { ...defaultWidgetConfig.visibility, ...(value.visibility ?? {}) },
+    defaults: { ...defaultWidgetConfig.defaults, ...(value.defaults ?? {}) },
     labels: { ...defaultWidgetConfig.labels, ...(value.labels ?? {}) },
     layout: {
       ...defaultWidgetConfig.layout,
       ...(value.layout ?? {}),
+      mediacard: { ...defaultWidgetConfig.layout.mediacard, ...(value.layout?.mediacard ?? {}) },
+      player: {
+        ...defaultWidgetConfig.layout.player,
+        ...(value.layout?.player ?? {}),
+        tile: { ...defaultWidgetConfig.layout.player.tile, ...(value.layout?.player?.tile ?? {}) },
+        autoAdvance: {
+          ...defaultWidgetConfig.layout.player.autoAdvance,
+          ...(value.layout?.player?.autoAdvance ?? {}),
+        },
+      },
       sections: normalizeSections(value.layout?.sections, value.visibility),
       video: { ...defaultWidgetConfig.layout.video, ...(value.layout?.video ?? {}) },
       wall: { ...defaultWidgetConfig.layout.wall, ...(value.layout?.wall ?? {}) },
     },
-    visibility: { ...defaultWidgetConfig.visibility, ...(value.visibility ?? {}) },
-    defaults: { ...defaultWidgetConfig.defaults, ...(value.defaults ?? {}) },
+    form: {
+      ...defaultWidgetConfig.form,
+      ...(value.form ?? {}),
+      fields: { ...defaultWidgetConfig.form.fields, ...(value.form?.fields ?? {}) },
+      maxMedia: ([1, 3, 6] as number[]).includes(Number(value.form?.maxMedia)) ? (Number(value.form?.maxMedia) as 1 | 3 | 6) : defaultWidgetConfig.form.maxMedia,
+      cta: { ...defaultWidgetConfig.form.cta, ...(value.form?.cta ?? {}) },
+    },
+    customTags: { ...defaultWidgetConfig.customTags, ...(value.customTags ?? {}) },
     customFields: normalizeCustomFields(value.customFields),
     marketplacePolicy: mergeMarketplacePolicy(value.marketplacePolicy),
     ranking: value.ranking?.length ? value.ranking : defaultWidgetConfig.ranking,
@@ -318,7 +415,16 @@ function normalizeSections(
     seen[id] = true
     out.push(id)
   }
-  // The list is the point of the widget — always render it.
+  // New sections added after a config was published (e.g. `player`) insert at
+  // their default position instead of being silently dropped.
+  const defaults = defaultWidgetConfig.layout.sections
+  for (const id of defaults) {
+    if (legacy[id] || seen[id]) continue
+    const anchor = out.findIndex((existing) => defaults.indexOf(existing) > defaults.indexOf(id))
+    if (anchor === -1) out.push(id)
+    else out.splice(anchor, 0, id)
+    seen[id] = true
+  }
   if (!seen.list) out.push('list')
   return out
 }
