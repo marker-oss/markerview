@@ -231,7 +231,7 @@ export default function App() {
     return (
       <>
         <main className="auth-screen">
-          <p className="muted">Загрузка...</p>
+          <p className="muted" role="status" aria-live="polite">Загрузка...</p>
         </main>
         <ToastHost />
       </>
@@ -274,7 +274,7 @@ export default function App() {
               />
             </label>
             <button type="submit">{setup ? 'Создать и войти' : 'Войти'}</button>
-            {error && <p className="error">{error}</p>}
+            {error && <p className="error" role="alert">{error}</p>}
             {setup && (
               <div className="onboard-checklist">
                 <div className="done">
@@ -333,31 +333,33 @@ export default function App() {
               <small>панель управления</small>
             </span>
           </div>
-          {nav.map((group) => (
-            <div key={group.label}>
-              <span className="sb-lbl">{group.label}</span>
-              {group.items.map((item) => (
-                <a
-                  key={item.route}
-                  className="sb-i"
-                  href={`#/${item.route}`}
-                  aria-current={route === item.route ? 'page' : undefined}
-                  onClick={() => setSbOpen(false)}
-                >
-                  <Icon name={item.icon} />
-                  {item.label}
-                  {item.route === 'reviews' && counts.pendingReviews > 0 && <span className="navcount">{counts.pendingReviews}</span>}
-                </a>
-              ))}
-            </div>
-          ))}
-          <a
-            className={`sb-status${health ? ` ${health.tone}` : ''}`}
-            href="#/status"
-            style={{ background: health ? undefined : 'var(--sunken)' }}
-          >
-            {health ? health.label : 'Состояние'}
-          </a>
+          <nav aria-label="Основная навигация">
+            {nav.map((group) => (
+              <div key={group.label}>
+                <span className="sb-lbl">{group.label}</span>
+                {group.items.map((item) => (
+                  <a
+                    key={item.route}
+                    className="sb-i"
+                    href={`#/${item.route}`}
+                    aria-current={route === item.route ? 'page' : undefined}
+                    onClick={() => setSbOpen(false)}
+                  >
+                    <Icon name={item.icon} />
+                    {item.label}
+                    {item.route === 'reviews' && counts.pendingReviews > 0 && <span className="navcount">{counts.pendingReviews}</span>}
+                  </a>
+                ))}
+              </div>
+            ))}
+            <a
+              className={`sb-status${health ? ` ${health.tone}` : ''}`}
+              href="#/status"
+              style={{ background: health ? undefined : 'var(--sunken)' }}
+            >
+              {health ? health.label : 'Состояние'}
+            </a>
+          </nav>
           <div className="sb-foot">
             <button className="sb-user" onClick={logout} title="Выйти">
               <span className="sb-av">{(login || role || 'A').slice(0, 1).toUpperCase()}</span>
@@ -380,7 +382,7 @@ export default function App() {
           </div>
         </aside>
 
-        <div className="main">
+        <main className="main">
           <header className="top">
             <button className="sb-burger" onClick={() => setSbOpen(true)} aria-label="Меню">
               <Icon name="burger" />
@@ -396,7 +398,7 @@ export default function App() {
             )}
           </header>
           {showUpdateBanner && versionInfo && (
-            <div className="update-banner">
+            <div className="update-banner" role="status" aria-live="polite">
               <span>
                 Доступна новая версия <strong>{versionInfo.latest}</strong> (у вас {versionInfo.current}).{' '}
                 <a href={versionInfo.releaseUrl} target="_blank" rel="noreferrer">
@@ -413,7 +415,7 @@ export default function App() {
             </div>
           )}
           {route === 'widget' ? page : <div className="page">{page}</div>}
-        </div>
+        </main>
       </div>
       <ToastHost />
     </>

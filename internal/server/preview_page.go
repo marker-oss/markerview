@@ -299,7 +299,7 @@ func (s *Server) handlePreviewPage(w http.ResponseWriter, r *http.Request) {
 	// 'unsafe-inline'.
 	w.Header().Set("Content-Security-Policy",
 		"default-src 'none'; script-src 'self' 'nonce-"+nonce+
-			"'; style-src 'self' https: 'unsafe-inline'; img-src https: data:; font-src https:; media-src 'self' https:; frame-ancestors 'self'")
+			"'; style-src 'self' https: 'unsafe-inline'; img-src 'self' https: data:; font-src 'self' https: data:; media-src 'self' https:; frame-ancestors 'self'")
 	// securityHeaders sets X-Frame-Options: DENY for every response; the
 	// builder's iframe (same origin) must be allowed to show this page.
 	w.Header().Set("X-Frame-Options", "SAMEORIGIN")

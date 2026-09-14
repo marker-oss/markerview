@@ -336,19 +336,19 @@ export default function Reviews({ questions, pendingQuestions }: { questions: Re
       ) : (
         <>
           <div className="card fbar">
-            <select value={marketplace} onChange={(e) => resetTo(setMarketplace)(e.target.value)} style={{ maxWidth: 170 }}>
+            <select aria-label="Площадка" value={marketplace} onChange={(e) => resetTo(setMarketplace)(e.target.value)} style={{ maxWidth: 170 }}>
               <option value="">Все площадки</option>
               <option value="site">Сайт</option>
               <option value="wb">Wildberries</option>
               <option value="ym">Яндекс Маркет</option>
               <option value="ozon">Ozon</option>
             </select>
-            <select value={visibility} onChange={(e) => resetTo(setVisibility)(e.target.value)} style={{ maxWidth: 160 }}>
+            <select aria-label="Видимость отзыва" value={visibility} onChange={(e) => resetTo(setVisibility)(e.target.value)} style={{ maxWidth: 160 }}>
               <option value="">Любая видимость</option>
               <option value="visible">Показан</option>
               <option value="hidden">Скрыт</option>
             </select>
-            <select value={status} onChange={(e) => resetTo(setStatus)(e.target.value)} style={{ maxWidth: 170 }}>
+            <select aria-label="Статус отзыва" value={status} onChange={(e) => resetTo(setStatus)(e.target.value)} style={{ maxWidth: 170 }}>
               <option value="">Активные</option>
               <option value="pending">На модерации</option>
               <option value="approved">Одобренные</option>
@@ -357,7 +357,7 @@ export default function Reviews({ questions, pendingQuestions }: { questions: Re
               <option value="deleted">Удалённые</option>
               <option value="all">Все</option>
             </select>
-            <select value={sort} onChange={(e) => resetTo(setSort)(e.target.value)} style={{ maxWidth: 180 }}>
+            <select aria-label="Сортировка отзывов" value={sort} onChange={(e) => resetTo(setSort)(e.target.value)} style={{ maxWidth: 180 }}>
               <option value="">Сначала новые</option>
               <option value="highest">Высокий рейтинг</option>
               <option value="lowest">Низкий рейтинг</option>
@@ -365,6 +365,7 @@ export default function Reviews({ questions, pendingQuestions }: { questions: Re
             </select>
             <label className="search" style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '1 1 220px', maxWidth: 320, border: '1.5px solid var(--border)', borderRadius: 'var(--r-s)', background: 'var(--surface)', minHeight: 38, padding: '0 10px' }}>
               <input
+                aria-label="Поиск по тексту отзыва"
                 style={{ border: 0, outline: 'none', flex: 1, minHeight: 30, background: 'transparent', fontSize: 13.5 }}
                 value={searchDraft}
                 onChange={(e) => setSearchDraft(e.target.value)}
@@ -379,6 +380,7 @@ export default function Reviews({ questions, pendingQuestions }: { questions: Re
             </label>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '0 1 220px', border: '1.5px solid var(--border)', borderRadius: 'var(--r-s)', background: 'var(--surface)', minHeight: 38, padding: '0 10px' }}>
               <input
+                aria-label="Поиск по артикулу"
                 style={{ border: 0, outline: 'none', flex: 1, minHeight: 30, background: 'transparent', fontSize: 13.5 }}
                 value={articleDraft}
                 onChange={(e) => setArticleDraft(e.target.value)}
@@ -612,13 +614,13 @@ export default function Reviews({ questions, pendingQuestions }: { questions: Re
             </div>
             {data.total > 0 && (
               <div className="pager">
-                <button disabled={!hasPrev} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}>
+                <button aria-label="Предыдущая страница" disabled={!hasPrev} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}>
                   ‹
                 </button>
                 <span className="cur">
                   {from}–{to} из {data.total}
                 </span>
-                <button disabled={!hasNext} onClick={() => setOffset(offset + PAGE_SIZE)}>
+                <button aria-label="Следующая страница" disabled={!hasNext} onClick={() => setOffset(offset + PAGE_SIZE)}>
                   ›
                 </button>
               </div>

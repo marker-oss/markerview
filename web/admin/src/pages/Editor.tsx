@@ -273,33 +273,35 @@ export default function Editor() {
   }, [previewCfg])
   // E3(real): anchor селектор для прокси-превью; меняется из поля в hintstrip.
   const [previewAnchor, setPreviewAnchor] = useState('#reviews-widget')
-  // Подсказка, если якоря нет на странице магазина (mount тогда не делаем —
-  // как живой loader: «no anchor» = просто не рендерим).
-  const [anchorMissing, setAnchorMissing] = useState(false)
+  // Только preview: при отсутствии якоря монтируем в конце страницы магазина.
+  const [previewFallback, setPreviewFallback] = useState(false)
+  const [previewError, setPreviewError] = useState('')
 
   // Надёжный монтаж виджета в srcDoc-iframe: inline-скрипт в srcdoc не
   // исполняется (CSP/srcdoc-квирк Chromium), поэтому монтируем из родителя по onLoad.
   const previewFrameRef = useRef<HTMLIFrameElement | null>(null)
-  const mountPreviewWidget = useCallback(() => {
+  const mountPreviewWidget = useCallback((reportFailure = false) => {
     const frame = previewFrameRef.current
     if (!frame) return
     try {
       const win: Window & { ReviewsWidget?: ReviewsWidgetApi } | null = frame.contentWindow
       const doc = frame.contentDocument
-      if (!win || !doc || !win.ReviewsWidget) return
-      const root = doc.getElementById('preview')
-      if (root && win.ReviewsWidget.defaultConfig) {
-        win.ReviewsWidget.mount(root, {
-          reviews: win.ReviewsWidget.sampleReviews,
-          productName: context === 'product' ? 'Платье миди «Аметист»' : '',
-          context,
-          config: previewCfgRef.current,
-          submissionUrl: '/api/review-submissions',
-          submissionConfig: { enabled: true, allowedTypes: ['image/jpeg', 'image/png', 'video/mp4'], privacyUrl: '' },
-        })
+      const root = doc?.getElementById('preview')
+      if (!win?.ReviewsWidget || !root) {
+        if (reportFailure) setPreviewError('Не удалось загрузить предпросмотр виджета.')
+        return
       }
+      win.ReviewsWidget.mount(root, {
+        reviews: win.ReviewsWidget.sampleReviews,
+        productName: context === 'product' ? 'Платье миди «Аметист»' : '',
+        context,
+        config: previewCfgRef.current,
+        submissionUrl: '/api/review-submissions',
+        submissionConfig: { enabled: true, allowedTypes: ['image/jpeg', 'image/png', 'video/mp4'], privacyUrl: '' },
+      })
+      setPreviewError('')
     } catch {
-      /* iframe ещё грузится */
+      if (reportFailure) setPreviewError('Не удалось смонтировать предпросмотр виджета.')
     }
   }, [context])
   // Монтаж после каждого обновления previewCfg (iframe пересоздаётся через srcDoc).
@@ -324,7 +326,7 @@ export default function Editor() {
   useEffect(() => {
     realAnchorRef.current = previewAnchor
   }, [previewAnchor])
-  const mountRealPreview = useCallback(() => {
+  const mountRealPreview = useCallback((reportFailure = false) => {
     if (previewSource !== 'real') return
     const frame = realFrameRef.current
     if (!frame) return
@@ -334,18 +336,20 @@ export default function Editor() {
           ReviewsWidget?: ReviewsWidgetApi & { mountShadow: (host: HTMLElement, options: Record<string, unknown>) => void }
         }) | null
         const doc = frame.contentDocument
-        if (!win || !doc || !win.ReviewsWidget?.mountShadow) return
+        if (!win || !doc?.body || !win.ReviewsWidget?.mountShadow) {
+          setPreviewFallback(false)
+          if (reportFailure) setPreviewError('Не удалось загрузить предпросмотр страницы магазина.')
+          return
+        }
         const anchor = doc.querySelector(realAnchorRef.current)
-        setAnchorMissing(!anchor)
-        if (!anchor) return
-        let host = anchor.querySelector<HTMLElement>('[data-reviews-preview-host]')
-        // Один host на якорь: remount переиспользует его (mountShadow сам
-        // чистит shadowRoot), иначе каждый тик добавлял бы новый div.
+        const container = anchor ?? doc.body
+        let host = doc.querySelector<HTMLElement>('[data-reviews-preview-host]')
+        // Один host на документ, включая fallback; mountShadow чистит shadowRoot.
         if (!host) {
           host = doc.createElement('div')
           host.setAttribute('data-reviews-preview-host', '')
-          anchor.appendChild(host)
         }
+        if (host.parentElement !== container) container.appendChild(host)
         win.ReviewsWidget.mountShadow(host, {
           styleText: widgetCssText,
           reviews: win.ReviewsWidget.sampleReviews,
@@ -354,8 +358,11 @@ export default function Editor() {
           submissionUrl: '/api/review-submissions',
           submissionConfig: { enabled: true, allowedTypes: ['image/jpeg', 'image/png', 'video/mp4'], privacyUrl: '' },
         })
+        setPreviewFallback(!anchor)
+        setPreviewError('')
       } catch {
-        /* iframe ещё грузится */
+        setPreviewFallback(false)
+        if (reportFailure) setPreviewError('Не удалось смонтировать предпросмотр страницы магазина.')
       }
     })
   }, [previewSource, context])
@@ -410,28 +417,29 @@ export default function Editor() {
         <div className="canvas">
           <div className="hintstrip">
             <div className="seg" role="group" aria-label="Источник превью">
-              <button aria-pressed={previewSource === 'mock'} onClick={() => setPreviewSource('mock')}>
+              <button aria-pressed={previewSource === 'mock'} onClick={() => { setPreviewError(''); setPreviewFallback(false); setPreviewSource('mock') }}>
                 Мок
               </button>
               <button
                 aria-pressed={previewSource === 'real'}
                 disabled={!shopOrigin}
                 title={shopOrigin ? undefined : 'Укажите адрес магазина в Настройках'}
-                onClick={() => setPreviewSource('real')}
+                onClick={() => { setPreviewError(''); setPreviewSource('real') }}
               >
                 Страница магазина
               </button>
             </div>
             {previewSource === 'real' && (
-              <label className="k" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                Якорь
+              <div className="k" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <label htmlFor="preview-anchor">Якорь</label>
                 <input
+                  id="preview-anchor"
                   value={previewAnchor}
                   onChange={(e) => setPreviewAnchor(e.target.value)}
                   placeholder="#reviews-widget"
                   style={{ minWidth: 150 }}
                 />
-              </label>
+              </div>
             )}
             <span>
               {previewSource === 'real'
@@ -456,22 +464,28 @@ export default function Editor() {
                 <iframe
                   title="Предпросмотр на странице магазина"
                   ref={realFrameRef}
-                  onLoad={mountRealPreview}
+                  onLoad={() => mountRealPreview(true)}
+                  onError={() => setPreviewError('Не удалось загрузить предпросмотр страницы магазина.')}
                   src={`/api/preview-page?url=${encodeURIComponent(shopOrigin)}&anchor=${encodeURIComponent(previewAnchor)}`}
                 />
-                {anchorMissing && (
-                  <div className="realframe-hint" role="alert">
-                    Якорь «{previewAnchor}» не найден на странице магазина — виджет не смонтирован.
+                {previewFallback && !previewError && (
+                  <div className="realframe-hint" role="status">
+                    Якорь «{previewAnchor}» не найден на странице магазина — виджет показан в конце страницы только для предпросмотра.
                   </div>
                 )}
+                {previewError && <div className="realframe-hint" role="alert">{previewError}</div>}
               </div>
             ) : (
-              <iframe
-                title="Предпросмотр виджета"
-                ref={previewFrameRef}
-                srcDoc={preview}
-                onLoad={mountPreviewWidget}
-              />
+              <>
+                <iframe
+                  title="Предпросмотр виджета"
+                  ref={previewFrameRef}
+                  srcDoc={preview}
+                  onLoad={() => mountPreviewWidget(true)}
+                  onError={() => setPreviewError('Не удалось загрузить предпросмотр виджета.')}
+                />
+                {previewError && <div className="realframe-hint" role="alert">{previewError}</div>}
+              </>
             )}
           </div>
         </div>

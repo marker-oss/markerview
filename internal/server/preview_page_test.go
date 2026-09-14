@@ -22,7 +22,7 @@ func TestPreviewPageReturnsSanitizedHTML(t *testing.T) {
 			`<style>.x{color:red}</style>`+
 			`<link rel="stylesheet" href="https://fonts.shop.test/a.css">`+
 			`<link rel="stylesheet" href="/local.css">`+
-			`</head><body><div data-page>Кроссовки</div><img src="/a.png"></body></html>`)
+			`</head><body><div data-page>Кроссовки</div><img src="/api/assets/review-icon.svg"><script src="https://evil.test/x.js"></script></body></html>`)
 	}))
 	defer upstream.Close()
 
@@ -56,6 +56,12 @@ func TestPreviewPageReturnsSanitizedHTML(t *testing.T) {
 	}
 	if strings.Contains(body, `href="/local.css"`) {
 		t.Fatalf("non-https stylesheet link survived: %s", body)
+	}
+	if !strings.Contains(body, `src="/api/assets/review-icon.svg"`) {
+		t.Fatalf("same-origin image reference lost: %s", body)
+	}
+	if strings.Contains(body, `evil.test/x.js`) {
+		t.Fatalf("external script survived sanitization: %s", body)
 	}
 	if !strings.Contains(body, "Кроссовки") {
 		t.Fatalf("page body lost: %s", body)
@@ -149,8 +155,10 @@ func TestPreviewPageCSPAllowsShopStylesAndOurScript(t *testing.T) {
 	for _, want := range []string{
 		"script-src 'self' 'nonce-",
 		"style-src 'self' https: 'unsafe-inline'",
-		"img-src https: data:",
-		"font-src https:",
+		"img-src 'self' https: data:",
+		"font-src 'self' https: data:",
+		"media-src 'self' https:",
+		"frame-ancestors 'self'",
 	} {
 		if !strings.Contains(csp, want) {
 			t.Fatalf("CSP missing %q: %s", want, csp)

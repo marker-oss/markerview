@@ -73,14 +73,14 @@ export default function QuestionsPanel() {
   return (
     <section>
       <div className="card fbar">
-        <select value={marketplace} onChange={(e) => resetTo(setMarketplace)(e.target.value)} style={{ maxWidth: 180 }}>
+        <select aria-label="Площадка" value={marketplace} onChange={(e) => resetTo(setMarketplace)(e.target.value)} style={{ maxWidth: 180 }}>
           <option value="">Все площадки</option>
           <option value="site">Сайт</option>
           <option value="wb">Wildberries</option>
           <option value="ozon">Ozon</option>
           <option value="ym">Яндекс Маркет</option>
         </select>
-        <select value={status} onChange={(e) => resetTo(setStatus)(e.target.value)} style={{ maxWidth: 190 }}>
+        <select aria-label="Статус вопроса" value={status} onChange={(e) => resetTo(setStatus)(e.target.value)} style={{ maxWidth: 190 }}>
           <option value="pending">Ожидают ответа</option>
           <option value="">Все статусы</option>
           <option value="imported">Импортированные</option>
@@ -162,13 +162,13 @@ export default function QuestionsPanel() {
         </div>
         {total > PAGE_SIZE && (
           <div className="pager">
-            <button disabled={!hasPrev} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}>
+            <button aria-label="Предыдущая страница" disabled={!hasPrev} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}>
               ‹
             </button>
             <span className="cur">
               {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} из {total}
             </span>
-            <button disabled={!hasNext} onClick={() => setOffset(offset + PAGE_SIZE)}>
+            <button aria-label="Следующая страница" disabled={!hasNext} onClick={() => setOffset(offset + PAGE_SIZE)}>
               ›
             </button>
           </div>
