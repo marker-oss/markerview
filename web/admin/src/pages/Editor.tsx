@@ -696,6 +696,45 @@ function LookPanel({ cfg, patch }: { cfg: WidgetConfig; patch: (p: Partial<Widge
             ))}
           </div>
         </div>
+        {cfg.header.elements.distribution && (
+          <>
+            <b>Распределение оценок</b>
+            <label className="fld">
+              <span>Положение</span>
+              <select
+                value={cfg.header.distribution.position}
+                onChange={(e) => patch({ header: { ...cfg.header, distribution: { ...cfg.header.distribution, position: e.target.value as WidgetConfig['header']['distribution']['position'] } } })}
+              >
+                <option value="auto">Авто</option>
+                <option value="beside">Рядом со сводкой</option>
+                <option value="below">Под сводкой</option>
+              </select>
+            </label>
+            <div className="f2">
+              <label className="fld">
+                <span>Ширина</span>
+                <select
+                  value={cfg.header.distribution.width}
+                  onChange={(e) => patch({ header: { ...cfg.header, distribution: { ...cfg.header.distribution, width: e.target.value as WidgetConfig['header']['distribution']['width'] } } })}
+                >
+                  <option value="compact">Компактная</option>
+                  <option value="full">Вся доступная</option>
+                </select>
+              </label>
+              <label className="fld">
+                <span>Плотность</span>
+                <select
+                  value={cfg.header.distribution.density}
+                  onChange={(e) => patch({ header: { ...cfg.header, distribution: { ...cfg.header.distribution, density: e.target.value as WidgetConfig['header']['distribution']['density'] } } })}
+                >
+                  <option value="compact">Компактная</option>
+                  <option value="normal">Обычная</option>
+                </select>
+              </label>
+            </div>
+            <span className="hint">«Авто» следует схеме шапки: рядом для ряда, под сводкой для стопки и центра. В узком виджете блок переносится под сводку; на сенсорных устройствах строки сохраняют удобную высоту для нажатия.</span>
+          </>
+        )}
         <span className="hint">
           «Доля оценок 4–5★» показывает долю высоких оценок, а не явные рекомендации покупателей. Схема меняет компоновку сводки; элементы включаются по одному — пустая шапка скрывается.
         </span>

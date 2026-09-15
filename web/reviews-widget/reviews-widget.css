@@ -200,36 +200,44 @@
   vertical-align: super;
 }
 
-/* Header schemes share contents but retain distinct alignment. */
+/* Header placement is driven by the effective distribution settings. */
 .rw-head {
+  --rw-head-dist-column: minmax(180px, 320px);
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(180px, 280px) auto;
-  align-items: center;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  justify-items: start;
   gap: 20px;
   text-align: left;
   padding: 18px 0 16px;
 }
+.rw-head[data-dist-width="full"] {
+  --rw-head-dist-column: minmax(180px, 1fr);
+}
 .rw-head-main {
   display: grid;
   gap: 10px;
+  width: 100%;
   min-width: 0;
 }
-.rw-head:not(:has(.rw-dist)) {
+.rw-head[data-dist-position="beside"]:where(:has(> .rw-head-main:not([hidden]))):where(:has(> .rw-dist:not([hidden]))) {
+  grid-template-columns: minmax(0, 1fr) var(--rw-head-dist-column);
+}
+.rw-head[data-dist-position="beside"]:where(:has(> .rw-head-main:not([hidden]))):where(:has(> .rw-hbtn:not([hidden]))) {
   grid-template-columns: minmax(0, 1fr) auto;
 }
-.rw-head:not(:has(.rw-hbtn)) {
-  grid-template-columns: minmax(0, 1fr) minmax(180px, 280px);
+.rw-head[data-dist-position="beside"]:where(:has(> .rw-dist:not([hidden]))):where(:has(> .rw-hbtn:not([hidden]))) {
+  grid-template-columns: var(--rw-head-dist-column) auto;
 }
-.rw-head:not(:has(.rw-dist)):not(:has(.rw-hbtn)),
-.rw-head:not(:has(.rw-head-main)):not(:has(.rw-hbtn)) {
-  grid-template-columns: minmax(0, 1fr);
-}
-.rw-head:not(:has(.rw-head-main)):has(.rw-hbtn) {
-  grid-template-columns: minmax(0, 1fr) auto;
+.rw-head[data-dist-position="beside"]:where(:has(> .rw-head-main:not([hidden]))):where(:has(> .rw-dist:not([hidden]))):where(:has(> .rw-hbtn:not([hidden]))) {
+  grid-template-columns: minmax(0, 1fr) var(--rw-head-dist-column) auto;
 }
 .rw-head > .rw-hbtn {
-  justify-self: end;
+  justify-self: start;
   max-width: 200px;
+}
+.rw-head[data-dist-position="beside"] > .rw-hbtn {
+  justify-self: end;
 }
 .rw-head > :is(.rw-custom-summary, .rw-view-all-row) {
   grid-column: 1 / -1;
@@ -238,58 +246,58 @@
   display: grid;
   gap: 4px;
 }
-.rw-head .rw-dist {
-  width: 100%;
+.rw-head > .rw-dist {
+  width: min(320px, 100%);
   min-width: 0;
+  max-width: 320px;
   margin: 0;
+  justify-self: start;
 }
-.reviews-widget.rw-head-stack .rw-head,
-.reviews-widget.rw-head-center .rw-head {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  justify-items: start;
-  gap: 10px;
+.rw-head[data-dist-width="full"] > .rw-dist {
+  width: 100%;
+  max-width: none;
+  justify-self: stretch;
 }
 .reviews-widget.rw-head-center .rw-head {
   justify-items: center;
   gap: 12px;
   text-align: center;
 }
-.reviews-widget.rw-head-stack .rw-dist,
-.reviews-widget.rw-head-center .rw-dist {
-  margin-left: 0;
-}
-.reviews-widget.rw-head-stack .rw-head > .rw-hbtn {
-  justify-self: start;
-}
 .reviews-widget.rw-head-center .rw-head-main {
   justify-items: center;
 }
-.reviews-widget.rw-head-center .rw-head > .rw-hbtn {
+.reviews-widget.rw-head-center .rw-head > :is(.rw-dist, .rw-hbtn) {
   justify-self: center;
+}
+.reviews-widget.rw-head-center .rw-head[data-dist-width="full"] > .rw-dist {
+  justify-self: stretch;
 }
 .reviews-widget.rw-head-center .rw-sum {
   justify-content: center;
 }
 @container (max-width: 650px) {
-  .reviews-widget:not(.rw-head-stack):not(.rw-head-center) .rw-head {
-    grid-template-columns: minmax(0, 1fr) minmax(150px, 1fr);
+  .rw-head[data-dist-position="beside"] {
+    grid-template-columns: minmax(0, 1fr);
     gap: 14px 20px;
   }
-  .reviews-widget:not(.rw-head-stack):not(.rw-head-center) .rw-head:not(:has(.rw-dist)),
-  .reviews-widget:not(.rw-head-stack):not(.rw-head-center) .rw-head:not(:has(.rw-head-main)) {
-    grid-template-columns: minmax(0, 1fr);
+  .rw-head[data-dist-position="beside"]:where(:has(> .rw-head-main:not([hidden]))):where(:has(> .rw-dist:not([hidden]))) {
+    grid-template-columns: minmax(0, 1fr) var(--rw-head-dist-column);
   }
-  .reviews-widget:not(.rw-head-stack):not(.rw-head-center) .rw-head > .rw-hbtn {
+  .rw-head[data-dist-position="beside"] > .rw-hbtn {
     grid-column: 1 / -1;
     justify-self: start;
   }
+  .reviews-widget.rw-head-center .rw-head[data-dist-position="beside"] > .rw-hbtn {
+    justify-self: center;
+  }
 }
-@container (max-width: 440px) {
-  .reviews-widget:not(.rw-head-stack):not(.rw-head-center) .rw-head {
+@container (max-width: 540px) {
+  .rw-head[data-dist-position="beside"] {
     grid-template-columns: minmax(0, 1fr);
   }
-  .reviews-widget:not(.rw-head-stack):not(.rw-head-center) .rw-head > .rw-hbtn {
+}
+@container (max-width: 440px) {
+  .rw-head > .rw-hbtn {
     width: 100%;
     max-width: none;
   }
@@ -368,13 +376,17 @@
 }
 .rw-dist {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: max-content minmax(44px, 1fr) max-content;
   gap: 2px;
   align-items: center;
   width: min(340px, 100%);
   max-width: 360px;
   min-width: min(180px, 100%);
   flex: 0 1 auto;
+}
+.rw-dist > button.rw-dist-row {
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
 }
 .rw-dist .rw-dl,
 .rw-dist .rw-dist-count {
@@ -567,20 +579,9 @@
   background: transparent;
 }
 
-.rw-dist-title {
-  margin: 0 0 10px;
-  font-size: calc(19px * var(--rw-font-scale));
-  font-weight: 800;
-}
-
-.rw-dist-list {
-  display: grid;
-  gap: 8px;
-}
-
 button.rw-dist-row {
   display: grid;
-  grid-template-columns: minmax(54px, .7fr) minmax(44px, 1.5fr) minmax(2ch, .7fr);
+  grid-template-columns: max-content minmax(44px, 1fr) max-content;
   gap: 8px;
   align-items: center;
   width: 100%;
@@ -600,7 +601,30 @@ button.rw-dist-row {
 }
 
 button.rw-dist-row:not(:has(.rw-dist-count)) {
-  grid-template-columns: minmax(54px, auto) minmax(44px, 1fr);
+  grid-template-columns: max-content minmax(44px, 1fr);
+}
+
+.rw-head[data-dist-density="compact"] button.rw-dist-row {
+  min-height: 28px;
+}
+
+.rw-head[data-dist-density="normal"] button.rw-dist-row {
+  min-height: 44px;
+}
+
+button.rw-dist-row > :is(.rw-dl, .rw-dist-count) {
+  white-space: nowrap;
+}
+
+@media (any-pointer: coarse) {
+  .rw-head[data-dist-density] button.rw-dist-row {
+    min-height: 44px;
+  }
+}
+@container (max-width: 540px) {
+  .rw-head[data-dist-density] button.rw-dist-row {
+    min-height: 44px;
+  }
 }
 
 button.rw-dist-row:not(:disabled):hover {

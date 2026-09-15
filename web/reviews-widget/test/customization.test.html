@@ -46,6 +46,25 @@
     assert(positions[1].score.y > positions[1].title.y, 'stack must place score below title');
     assert(positions[2].title.x > positions[1].title.x + 100, 'center must center the title');
   });
+  check('distribution position overrides the header scheme without stranding hidden controls', () => {
+    const below = mount({ header: { layout: 'row', distribution: { position: 'below' } } });
+    const summary = below.querySelector('.rw-head-main').getBoundingClientRect();
+    const distribution = below.querySelector('[data-role="distwrap"]').getBoundingClientRect();
+    assert(distribution.top >= summary.bottom, 'below distribution remained beside summary');
+    const beside = mount({ header: { layout: 'center', distribution: { position: 'beside' } } });
+    assert(beside.querySelector('[data-role="distwrap"]').getBoundingClientRect().left >= beside.querySelector('.rw-head-main').getBoundingClientRect().right, 'center scheme overrode explicit beside position');
+    const alone = mount({ layout: { sections: ['summary', 'list', 'form'] }, header: { distribution: { position: 'beside', width: 'full' }, elements: { title: false, rating: false, count: false, recommend: false } }, form: { ctaMode: 'header' } });
+    assert(Math.abs(alone.querySelector('[data-role="distwrap"]').getBoundingClientRect().width - alone.querySelector('.rw-head').getBoundingClientRect().width) < 2, 'absent summary or hidden CTA left an empty column');
+  });
+  check('distribution keeps a shared bar scale and accessible narrow density', () => {
+    const root = mount({ header: { distribution: { position: 'below', width: 'full', density: 'compact' } } }, {
+      reviews: Array.from({ length: 101 }, (_,i) => ({ ...review, externalReviewId: String(i), rating: i ? 5 : 4 })),
+    });
+    const bars = [...root.querySelectorAll('.rw-db')].map(bar => bar.getBoundingClientRect());
+    assert(bars.every(bar => Math.abs(bar.left - bars[0].left) < 1 && Math.abs(bar.width - bars[0].width) < 1), 'different count lengths changed the distribution scale');
+    root.style.width = '375px';
+    assert([...root.querySelectorAll('.rw-dist-row')].every(row => row.getBoundingClientRect().height >= 44), 'compact density overrides narrow touch targets');
+  });
   check('dark mode changes rendered text and panel, custom colors remain usable', () => {
     const light = mount({});
     const dark = mount({ theme: { dark: true } });

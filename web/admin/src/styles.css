@@ -2045,6 +2045,168 @@ small {
   grid-template-columns: minmax(140px, 1fr) 120px 140px 90px;
 }
 
+/* marketplace connections */
+.mp-card-head,
+.mp-publishing,
+.mp-catalog-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.mp-card-head,
+.mp-credentials,
+.mp-publishing,
+.mp-catalog {
+  padding: 20px 24px;
+}
+
+.mp-identity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 220px;
+}
+
+.mp-logo {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  object-fit: contain;
+  flex: none;
+}
+
+.mp-logo-fallback {
+  display: grid;
+  place-items: center;
+  background: var(--sunken);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.mp-credentials,
+.mp-catalog {
+  display: grid;
+  gap: 14px;
+}
+
+.mp-credentials,
+.mp-publishing {
+  border-top: 1px solid var(--border);
+}
+
+.mp-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+  gap: 16px;
+}
+
+.mp-fields input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+}
+
+.mp-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.marketplaces-page button {
+  min-height: 44px;
+}
+
+.mp-publishing {
+  justify-content: space-between;
+  background: var(--bg);
+  border-radius: 0 0 var(--r-m) var(--r-m);
+}
+
+.mp-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  background: transparent;
+  color: var(--muted);
+  padding: 0 6px;
+  font-size: 13px;
+}
+
+.mp-toggle:hover {
+  background: var(--sunken);
+}
+
+
+.mp-toggle[aria-pressed='true'] .tgl {
+  background: var(--accent);
+}
+
+.mp-toggle[aria-pressed='true'] .tgl::after {
+  transform: translateX(16px);
+}
+
+.mp-warning,
+.mp-load-error {
+  padding: 12px 24px;
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.mp-load-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  border-radius: var(--r-m);
+}
+
+.mp-catalog-head {
+  justify-content: space-between;
+}
+
+.mp-catalog-status {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 600px) {
+  .mp-card-head,
+  .mp-credentials,
+  .mp-publishing,
+  .mp-catalog {
+    padding: 16px;
+  }
+
+  .mp-identity {
+    flex-basis: 100%;
+    min-width: 0;
+  }
+
+  .mp-card-head > .mp-toggle {
+    margin-left: auto;
+  }
+
+  .mp-card-actions button,
+  .marketplaces-page .pagehead .actions {
+    flex: 1 1 100%;
+  }
+
+  .marketplaces-page .pagehead .actions button {
+    width: 100%;
+  }
+
+  .mp-fields input {
+    font-size: 16px;
+  }
+}
+
 /* billing */
 .billing-plans {
   display: grid;

@@ -18,7 +18,11 @@ const fieldLabels: Record<string, Record<string, string>> = {
 }
 
 const mpNames: Record<string, string> = { wb: 'Wildberries', ym: 'Яндекс Маркет', ozon: 'Ozon' }
-const mpColors: Record<string, string> = { wb: '#B137E5', ym: '#FC3F1D', ozon: '#005BFF' }
+const mpLogos: Record<string, string> = {
+  wb: new URL('../../../reviews-widget/assets/marketplaces/wb.png?inline', import.meta.url).href,
+  ym: new URL('../../../reviews-widget/assets/marketplaces/ym.png?inline', import.meta.url).href,
+  ozon: new URL('../../../reviews-widget/assets/marketplaces/ozon.png?inline', import.meta.url).href,
+}
 
 const defaultPublish: Record<string, boolean> = { wb: true, ym: true, ozon: false }
 
@@ -54,6 +58,8 @@ export default function Marketplaces() {
   const [publish, setPublish] = useState<Record<string, boolean>>(defaultPublish)
   const [catalog, setCatalog] = useState<CatalogStatus | null>(null)
   const [catalogPollEpoch, setCatalogPollEpoch] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
 
   // Poll the background catalog-refresh job while it runs; also picks up a job
   // already started earlier (page reload, another tab).
@@ -77,9 +83,12 @@ export default function Marketplaces() {
   }, [catalogPollEpoch])
 
   function load() {
+    setLoading(true)
+    setLoadError('')
     apiGet<{ marketplaces: MarketplaceStatus[] }>('/admin/api/marketplaces')
       .then((data) => setItems(data.marketplaces))
-      .catch((err) => toast.error(err instanceof Error ? err.message : 'Запрос не выполнен'))
+      .catch((err) => setLoadError(err instanceof Error ? err.message : 'Запрос не выполнен'))
+      .finally(() => setLoading(false))
   }
 
   useEffect(load, [])
@@ -159,126 +168,138 @@ export default function Marketplaces() {
   }
 
   return (
-    <section>
+    <section className="marketplaces-page">
       <div className="pagehead">
         <div>
           <h1>Маркетплейсы</h1>
           <p className="sub">Доступы, синхронизация и публикация ответов</p>
         </div>
         <div className="actions">
-          <button className="secondary" onClick={() => refreshCatalog()} disabled={busy !== '' || catalog?.state === 'running'} title="Перечитать карту сайта и добавить новые товары">
-            Обновить каталог
-          </button>
-          <button className="secondary" onClick={() => refreshCatalog(true)} disabled={busy !== '' || catalog?.state === 'running'} title="Заново обойти все страницы товаров — долго">
-            Пересканировать
-          </button>
-          <button onClick={() => sync()} disabled={busy !== ''}>
-            Синхронизировать всё
+          <button onClick={() => sync()} disabled={busy !== '' || loading || !items.some((item) => item.enabled && item.configured)}>
+            {busy === 'all' ? 'Запускаем синхронизацию…' : 'Синхронизировать всё'}
           </button>
         </div>
       </div>
 
-      {catalogStatusText(catalog) && <p className="hint" style={{ marginBottom: 14 }}>{catalogStatusText(catalog)}</p>}
+      {loadError && (
+        <div className="mp-load-error" role="alert">
+          <span>Не удалось загрузить площадки. {loadError}</span>
+          <button className="secondary" onClick={load} disabled={loading}>Повторить</button>
+        </div>
+      )}
 
-      <div className="stack">
+      <div className="stack" aria-busy={loading}>
         {items.map((item) => {
           const labels = fieldLabels[item.id] ?? {}
           const name = mpNames[item.id] ?? item.id
           return (
-            <div className="card" key={item.id}>
-              <div className="row" style={{ flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
-                <span className="who" style={{ minWidth: 170 }}>
-                  <span className="av" style={{ borderRadius: 10, width: 38, height: 38, background: mpColors[item.id] ?? 'var(--sunken)', color: '#fff', fontSize: 10 }}>
-                    {item.id.toUpperCase()}
-                  </span>
-                  <span>
-                    <b>{name}</b>
-                    <span>
-                      {item.configured ? 'доступы настроены' : 'доступы не заданы'}
-                    </span>
-                  </span>
+            <article className="card mp-card" key={item.id} aria-labelledby={`mp-${item.id}-title`}>
+              <header className="mp-card-head">
+                <div className="mp-identity">
+                  {mpLogos[item.id] ? (
+                    <img className="mp-logo" src={mpLogos[item.id]} alt="" width="44" height="44" />
+                  ) : <span className="mp-logo mp-logo-fallback" aria-hidden="true">{item.id.toUpperCase()}</span>}
+                  <div>
+                    <h2 id={`mp-${item.id}-title`}>{name}</h2>
+                    <p className="hint">{item.configured ? 'Доступы сохранены' : 'Добавьте данные для подключения'}</p>
+                  </div>
+                </div>
+                <span className={`bag ${item.warning ? 'bag-warn' : !item.configured ? 'bag-neutral' : item.enabled ? 'bag-ok' : 'bag-neutral'}`}>
+                  {item.warning ? 'Проверьте доступы' : !item.configured ? 'Не настроен' : item.enabled ? 'Готов к синхронизации' : 'Отключён'}
                 </span>
-                {item.configured ? (
-                  <span className="bag bag-ok">готов к синхронизации</span>
-                ) : (
-                  <span className="bag bag-warn">не настроен</span>
-                )}
-                {item.warning && <span className="bag bag-err">{item.warning}</span>}
-                <span className="tgl-row" style={{ marginLeft: 'auto' }}>
-                  <button
-                    className={`tgl${item.enabled ? '' : ''}`}
-                    aria-pressed={item.enabled}
-                    onClick={() => save(item, !item.enabled)}
-                    disabled={busy !== ''}
-                    aria-label={item.enabled ? 'Выключить' : 'Включить'}
-                  />
-                  <b>{item.enabled ? 'включён' : 'выключен'}</b>
-                </span>
-              </div>
-              <div className="row" style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(Object.keys(labels).length + 1, 4)}, minmax(150px, 1fr))`, gap: 10, alignItems: 'end' }}>
-                {Object.entries(labels).map(([key, label]) => (
-                  <label className="fld" key={key}>
-                    <span>{label}</span>
-                    <input
-                      value={drafts[item.id]?.[key] ?? ''}
-                      onChange={(e) => setDraft(item.id, key, e.target.value)}
-                      placeholder={item.fields?.[key] ? 'уже задан' : 'не задан'}
-                      type={key.includes('token') || key.includes('key') ? 'password' : 'text'}
-                    />
-                    {item.id === 'wb' && key === 'token' && (
-                      <i className="hint">Токен WB категории «Отзывы и вопросы».</i>
-                    )}
-                  </label>
-                ))}
-                <button className="secondary" onClick={() => save(item)} disabled={busy !== ''}>
-                  Сохранить доступы
+                <button
+                  className="mp-toggle"
+                  aria-pressed={item.enabled}
+                  onClick={() => save(item, !item.enabled)}
+                  disabled={busy !== ''}
+                  aria-label={`${item.enabled ? 'Выключить' : 'Включить'} ${name}`}
+                >
+                  <span className="tgl" aria-hidden="true" />
+                  <span>{item.enabled ? 'Включён' : 'Выключен'}</span>
                 </button>
-                <button className="secondary sm" onClick={() => sync(item.id)} disabled={busy !== '' || !item.enabled || !item.configured}>
-                  Синхронизировать
+              </header>
+              {item.warning && <p className="mp-warning" role="status">{item.warning}</p>}
+              <form className="mp-credentials" aria-label={`Доступы ${name}`} onSubmit={(e) => { e.preventDefault(); save(item) }}>
+                <div className="mp-fields">
+                  {Object.entries(labels).map(([key, label]) => (
+                    <label className="fld" key={key}>
+                      <span>{label}</span>
+                      <input
+                        name={key}
+                        value={drafts[item.id]?.[key] ?? ''}
+                        onChange={(e) => setDraft(item.id, key, e.target.value)}
+                        placeholder={item.fields?.[key] ? 'Сохранён · введите для замены' : 'Введите значение'}
+                        type={key.includes('token') || key.includes('key') ? 'password' : 'text'}
+                        autoComplete="off"
+                        spellCheck={false}
+                        aria-describedby={`mp-${item.id}-help`}
+                      />
+                    </label>
+                  ))}
+                </div>
+                <p className="hint" id={`mp-${item.id}-help`}>
+                  {item.id === 'wb' && 'Персональный токен WB категории «Отзывы и вопросы». '}
+                  {item.id === 'ym' && 'Укажите Business ID и API key или OAuth token. '}
+                  Пустые поля не изменяют сохранённые значения.
+                </p>
+                <div className="mp-card-actions">
+                  <button className="secondary" type="submit" disabled={busy !== ''}>
+                    {busy === `save-${item.id}` ? 'Сохраняем…' : 'Сохранить доступы'}
+                  </button>
+                  <button className="secondary" type="button" onClick={() => sync(item.id)} disabled={busy !== '' || !item.enabled || !item.configured}>
+                    {busy === item.id ? 'Запускаем…' : 'Синхронизировать'}
+                  </button>
+                </div>
+              </form>
+              <div className="mp-publishing">
+                <div>
+                  <h3>Публикация ответов</h3>
+                  <p className="hint">Отправлять ответы из ЛК на {name}.</p>
+                </div>
+                <button
+                  className="mp-toggle"
+                  aria-pressed={publish[item.id] ?? defaultPublish[item.id] ?? false}
+                  onClick={(e) => togglePublish(item.id, e.currentTarget.getAttribute('aria-pressed') !== 'true')}
+                  disabled={busy !== ''}
+                  aria-label={`Публиковать ответы на ${name}`}
+                >
+                  <span className="tgl" aria-hidden="true" />
+                  <span>{(publish[item.id] ?? defaultPublish[item.id] ?? false) ? 'Включена' : 'Выключена'}</span>
                 </button>
               </div>
-              <div className="row">
-                <span className="k">Публиковать ответы на МП</span>
-                <span className="tgl-row" style={{ marginLeft: 'auto' }}>
-                  <button
-                    className="tgl"
-                    aria-pressed={publish[item.id] ?? defaultPublish[item.id] ?? false}
-                    onClick={(e) => togglePublish(item.id, e.currentTarget.getAttribute('aria-pressed') !== 'true')}
-                    disabled={busy !== ''}
-                    aria-label="Публиковать ответы"
-                  />
-                  <b>{(publish[item.id] ?? defaultPublish[item.id] ?? false) ? 'да' : 'нет'}</b>
-                </span>
-              </div>
-            </div>
+            </article>
           )
         })}
-        {items.length === 0 && (
-          <div className="empty">
-            <b>Маркетплейсы недоступны</b>
-            <p>Список площадок появится после загрузки.</p>
+        {items.length === 0 && !loadError && (
+          <div className="empty" role="status">
+            <b>{loading ? 'Загружаем площадки…' : 'Площадки не найдены'}</b>
+            <p>{loading ? 'Получаем состояние подключений.' : 'Проверьте конфигурацию маркетплейсов на сервере.'}</p>
           </div>
         )}
       </div>
 
-      <div className="sec-t">Каталог товаров</div>
-      <div className="grid g3">
-        <div className="card" style={{ padding: 16, display: 'grid', gap: 8 }}>
-          <b style={{ fontSize: 13.5 }}>Последний обход</b>
-          <span className="hint">
-            {catalog?.state === 'done' ? `товаров ${catalog.products}, артикулов ${catalog.articles}` : 'по карте сайта'}
+      <h2 className="sec-t" id="mp-catalog-title">Каталог товаров</h2>
+      <section className="card mp-catalog" aria-labelledby="mp-catalog-title">
+        <div className="mp-catalog-head">
+          <div>
+            <h3>Товары вашего магазина</h3>
+            <p className="hint">Обновите каталог по карте сайта, чтобы связать отзывы с товарами.</p>
+          </div>
+          <span className={`bag ${catalog?.state === 'error' ? 'bag-err' : catalog?.state === 'done' ? 'bag-ok' : 'bag-neutral'}`}>
+            {catalog?.state === 'running' ? 'Обновляется' : catalog?.state === 'done' ? 'Обновлён' : catalog?.state === 'error' ? 'Ошибка обновления' : 'Ожидание запуска'}
           </span>
         </div>
-        <div className="card" style={{ padding: 16, display: 'grid', gap: 8 }}>
-          <b style={{ fontSize: 13.5 }}>Автообновление</b>
-          <span className="hint">раз в сутки · без участия оператора</span>
-          <span className="bag bag-ok" style={{ justifySelf: 'start' }}>Работает</span>
+        {catalogStatusText(catalog) && <p className="mp-catalog-status" role="status">{catalogStatusText(catalog)}</p>}
+        <div className="mp-card-actions">
+          <button className="secondary" onClick={() => refreshCatalog()} disabled={busy !== '' || catalog?.state === 'running'}>
+            {busy === 'catalog' || catalog?.state === 'running' ? 'Обновляем каталог…' : 'Обновить каталог'}
+          </button>
+          <button className="quiet" onClick={() => refreshCatalog(true)} disabled={busy !== '' || catalog?.state === 'running'}>
+            Пересканировать полностью
+          </button>
         </div>
-        <div className="card" style={{ padding: 16, display: 'grid', gap: 8 }}>
-          <b style={{ fontSize: 13.5 }}>Состояние каталога</b>
-          <span className="hint">{catalogStatusText(catalog) || 'ожидание запуска'}</span>
-        </div>
-      </div>
+        <p className="hint">Обновление добавит новые товары. Полное сканирование повторно обойдёт все страницы и займёт больше времени.</p>
+      </section>
     </section>
   )
 }

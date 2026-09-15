@@ -78,6 +78,7 @@
     header: {
       title: "Отзывы покупателей",
       layout: "row",
+      distribution: { position: "auto", width: "compact", density: "compact" },
       elements: { title: true, rating: true, count: true, recommend: true, distribution: true },
     },
     answers: {
@@ -572,6 +573,10 @@
     const overview = document.createElement("div");
     overview.className = "rw-head";
     overview.setAttribute("data-section", "summary");
+    const distribution = config.header.distribution;
+    overview.dataset.distPosition = distribution.position === "auto" ? (config.header.layout === "row" ? "beside" : "below") : distribution.position;
+    overview.dataset.distWidth = distribution.width;
+    overview.dataset.distDensity = distribution.density;
     overview.innerHTML = `
       ${he.title || showScoreBlock ? '<div class="rw-head-main">' : ""}
       ${he.title ? `<span class="rw-wtitle" data-role="widget-title">${escapeHTML(config.header.title || defaultConfig.header.title)}</span>` : ""}
@@ -2991,6 +2996,12 @@
     if (!["row", "stack", "center"].includes(merged.header.layout)) {
       merged.header.layout = "row";
     }
+    const distribution = merged.header.distribution || {};
+    merged.header.distribution = {
+      position: ["auto", "beside", "below"].includes(distribution.position) ? distribution.position : defaultConfig.header.distribution.position,
+      width: ["compact", "full"].includes(distribution.width) ? distribution.width : defaultConfig.header.distribution.width,
+      density: ["compact", "normal"].includes(distribution.density) ? distribution.density : defaultConfig.header.distribution.density,
+    };
     merged.header.elements = { ...defaultConfig.header.elements, ...(merged.header.elements || {}) };
     if (!(config.header && config.header.elements && Object.hasOwn(config.header.elements, "distribution"))) {
       merged.header.elements.distribution = merged.visibility.ratingDistribution !== false;

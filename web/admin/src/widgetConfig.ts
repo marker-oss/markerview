@@ -93,6 +93,11 @@ export type WidgetConfig = {
       recommend: boolean
       distribution: boolean
     }
+    distribution: {
+      position: 'auto' | 'beside' | 'below'
+      width: 'compact' | 'full'
+      density: 'compact' | 'normal'
+    }
   }
   filters: {
     layout: 'rows' | 'dropdowns' | 'chips'
@@ -263,6 +268,7 @@ export const defaultWidgetConfig: WidgetConfig = {
     title: 'Отзывы покупателей',
     layout: 'row',
     elements: { title: true, rating: true, count: true, recommend: true, distribution: true },
+    distribution: { position: 'auto', width: 'compact', density: 'compact' },
   },
   answers: {
     style: 'card',
@@ -380,6 +386,11 @@ export function mergeWidgetConfig(value: Partial<WidgetConfig>): WidgetConfig {
         ...defaultWidgetConfig.header.elements,
         distribution: value.visibility?.ratingDistribution !== false,
         ...(value.header?.elements ?? {}),
+      },
+      distribution: {
+        position: value.header?.distribution?.position === 'beside' || value.header?.distribution?.position === 'below' ? value.header.distribution.position : 'auto',
+        width: value.header?.distribution?.width === 'full' ? 'full' : 'compact',
+        density: value.header?.distribution?.density === 'normal' ? 'normal' : 'compact',
       },
     },
     answers: { ...defaultWidgetConfig.answers, ...(value.answers ?? {}) },
