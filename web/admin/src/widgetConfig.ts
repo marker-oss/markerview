@@ -52,6 +52,8 @@ export type CustomFieldDef = {
 export type WidgetConfig = {
   appearance: {
     preset: WidgetAppearancePreset
+    viewAllHref: string
+    marketplaceDisplay: 'text' | 'icons'
   }
   theme: {
     accent: string
@@ -97,21 +99,27 @@ export type WidgetConfig = {
     collapsible: boolean
     multiSelect: boolean
     labelMode: 'all' | 'plain'
+    hideRare: boolean
   }
   labels: {
     writeReview: string
     readMore: string
+    search: string
+    viewAll: string
+    recentlyAdded: string
   }
   layout: {
     mode: 'list' | 'grid' | 'carousel' | 'video' | 'wall'
     columns: number
     pageSize: number
     pagination: 'more' | 'pages'
+    loadMoreAction: 'inline' | 'dialog'
     mediacard: {
       layout: 'row' | 'grid' | 'collage' | 'one'
       aspect: '16:10' | '1:1' | '4:5'
       maxTiles: 3 | 4 | 6
       plusMore: boolean
+      videoBadge: boolean
     }
     player: {
       enabled: boolean
@@ -143,6 +151,7 @@ export type WidgetConfig = {
       gap: number
       maxTiles: number
     }
+    tileHover: boolean
   }
   visibility: {
     photos: boolean
@@ -166,9 +175,10 @@ export type WidgetConfig = {
   }
   form: {
     mode: 'inline' | 'button'
+    ctaMode: 'section' | 'header' | 'both'
     title: string
     submitLabel: string
-    fields: { title: boolean; email: boolean; media: boolean }
+    fields: { title: boolean; email: boolean; media: boolean; prosCons: boolean }
     maxMedia: 1 | 3 | 6
     mediaHint: string
     cta: {
@@ -191,6 +201,8 @@ export type WidgetConfig = {
 export const defaultWidgetConfig: WidgetConfig = {
   appearance: {
     preset: 'default',
+    viewAllHref: '',
+    marketplaceDisplay: 'text',
   },
   theme: {
     accent: '#68478D',
@@ -215,11 +227,13 @@ export const defaultWidgetConfig: WidgetConfig = {
     pageSize: 3,
     sections: ['summary', 'player', 'media', 'filters', 'list', 'form'],
     pagination: 'more',
+    loadMoreAction: 'inline',
     mediacard: {
       layout: 'row',
       aspect: '16:10',
       maxTiles: 4,
       plusMore: true,
+      videoBadge: true,
     },
     player: {
       enabled: true,
@@ -243,6 +257,7 @@ export const defaultWidgetConfig: WidgetConfig = {
       gap: 12,
       maxTiles: 24,
     },
+    tileHover: true,
   },
   header: {
     title: 'Отзывы покупателей',
@@ -265,16 +280,21 @@ export const defaultWidgetConfig: WidgetConfig = {
     collapsible: false,
     multiSelect: false,
     labelMode: 'all',
+    hideRare: false,
   },
   labels: {
-    writeReview: '',
-    readMore: '',
+    writeReview: 'Написать отзыв',
+    readMore: 'Читать полностью',
+    search: 'Поиск по отзывам',
+    viewAll: 'Смотреть все',
+    recentlyAdded: 'Недавно',
   },
   form: {
     mode: 'inline',
+    ctaMode: 'section',
     title: 'Оставить отзыв',
     submitLabel: 'Отправить отзыв',
-    fields: { title: true, email: true, media: true },
+    fields: { title: true, email: true, media: true, prosCons: true },
     maxMedia: 3,
     mediaHint: 'Фото до 8 МБ · видео до 50 МБ',
     cta: { text: 'Оставить отзыв', hint: 'Помогите другим покупателям — оценка, текст, фото или видео' },
@@ -356,7 +376,11 @@ export function mergeWidgetConfig(value: Partial<WidgetConfig>): WidgetConfig {
     header: {
       ...defaultWidgetConfig.header,
       ...(value.header ?? {}),
-      elements: { ...defaultWidgetConfig.header.elements, ...(value.header?.elements ?? {}) },
+      elements: {
+        ...defaultWidgetConfig.header.elements,
+        distribution: value.visibility?.ratingDistribution !== false,
+        ...(value.header?.elements ?? {}),
+      },
     },
     answers: { ...defaultWidgetConfig.answers, ...(value.answers ?? {}) },
     viewer: { ...defaultWidgetConfig.viewer, ...(value.viewer ?? {}) },
@@ -367,6 +391,7 @@ export function mergeWidgetConfig(value: Partial<WidgetConfig>): WidgetConfig {
     layout: {
       ...defaultWidgetConfig.layout,
       ...(value.layout ?? {}),
+      loadMoreAction: value.layout?.loadMoreAction === 'dialog' ? 'dialog' : 'inline',
       mediacard: { ...defaultWidgetConfig.layout.mediacard, ...(value.layout?.mediacard ?? {}) },
       player: {
         ...defaultWidgetConfig.layout.player,
@@ -384,7 +409,7 @@ export function mergeWidgetConfig(value: Partial<WidgetConfig>): WidgetConfig {
     form: {
       ...defaultWidgetConfig.form,
       ...(value.form ?? {}),
-      fields: { ...defaultWidgetConfig.form.fields, ...(value.form?.fields ?? {}) },
+      fields: { ...defaultWidgetConfig.form.fields, ...(value.form?.fields ?? {}), email: true },
       maxMedia: ([1, 3, 6] as number[]).includes(Number(value.form?.maxMedia)) ? (Number(value.form?.maxMedia) as 1 | 3 | 6) : defaultWidgetConfig.form.maxMedia,
       cta: { ...defaultWidgetConfig.form.cta, ...(value.form?.cta ?? {}) },
     },
@@ -399,33 +424,19 @@ function normalizeSections(
   raw: WidgetSectionId[] | undefined,
   legacyVisibility: Partial<WidgetConfig['visibility']> | undefined,
 ): WidgetSectionId[] {
-  // Migration: configs published before `sections` existed gate blocks through
-  // the flat visibility flags. Map them onto the section order.
-  const legacy: Partial<Record<WidgetSectionId, true>> = {}
-  if (legacyVisibility) {
-    if (legacyVisibility.ratingDistribution === false) legacy.summary = true
-    if (legacyVisibility.photos === false) legacy.media = true
-    if (legacyVisibility.filters === false) legacy.filters = true
+  const explicit = Array.isArray(raw)
+  const legacy: Partial<Record<WidgetSectionId, boolean>> = explicit ? {} : {
+    summary: legacyVisibility?.ratingDistribution === false,
+    player: legacyVisibility?.videoRail === false,
+    media: legacyVisibility?.photos === false,
+    filters: legacyVisibility?.filters === false,
   }
   const out: WidgetSectionId[] = []
-  const seen: Partial<Record<WidgetSectionId, true>> = {}
-  for (const id of raw ?? defaultWidgetConfig.layout.sections) {
-    if (!widgetSectionLabels[id] || seen[id]) continue
-    if (legacy[id]) continue
-    seen[id] = true
+  for (const id of explicit ? raw : defaultWidgetConfig.layout.sections) {
+    if (!Object.hasOwn(widgetSectionLabels, id) || out.includes(id) || legacy[id]) continue
     out.push(id)
   }
-  // New sections added after a config was published (e.g. `player`) insert at
-  // their default position instead of being silently dropped.
-  const defaults = defaultWidgetConfig.layout.sections
-  for (const id of defaults) {
-    if (legacy[id] || seen[id]) continue
-    const anchor = out.findIndex((existing) => defaults.indexOf(existing) > defaults.indexOf(id))
-    if (anchor === -1) out.push(id)
-    else out.splice(anchor, 0, id)
-    seen[id] = true
-  }
-  if (!seen.list) out.push('list')
+  if (!out.includes('list')) out.push('list')
   return out
 }
 

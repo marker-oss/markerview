@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<title>Widget customization checks</title>
+<link rel="stylesheet" href="../reviews-widget.css">
+<pre id="out"></pre>
+<script src="../reviews-widget.js"></script>
+<script>
+  const output = document.querySelector('#out');
+  let failures = 0;
+  let passed = 0;
+  const review = {
+    marketplace: 'wb', externalReviewId: 'customization', rating: 5,
+    authorName: 'Анна', text: 'Удобная покупка', createdAt: '2026-01-01T12:00:00Z',
+    media: [{ kind: 'video', url: '../assets/demo-review-1.mp4', previewUrl: '../assets/review-video.svg', duration: 24 }],
+    answer: { text: 'Спасибо за отзыв', kind: 'seller' },
+  };
+  function assert(condition, message) {
+    if (!condition) throw new Error(message);
+  }
+  function mount(config, options = {}) {
+    const root = document.createElement('section');
+    root.style.width = '1000px';
+    document.body.append(root);
+    ReviewsWidget.mount(root, { reviews: [review], config: {
+      ...config,
+      layout: { sections: ['summary', 'list'], ...config.layout, player: { autoAdvance: { enabled: false } } },
+    }, ...options });
+    return root;
+  }
+  function check(name, run) {
+    try { run(); passed++; output.textContent += 'PASS ' + name + '\n'; }
+    catch (error) { failures++; output.textContent += 'FAIL ' + name + ': ' + error.message + '\n'; }
+    finally { document.querySelectorAll('section.reviews-widget').forEach(root => root.remove()); }
+  }
+  check('header row, stack and center produce distinct arrangements', () => {
+    const positions = ['row', 'stack', 'center'].map(layout => {
+      const root = mount({ header: { layout } });
+      const title = root.querySelector('[data-role="widget-title"]').getBoundingClientRect();
+      const score = root.querySelector('[data-role="score"]').getBoundingClientRect();
+      const header = root.querySelector('.rw-head').getBoundingClientRect();
+      const distribution = root.querySelector('[data-role="distwrap"]').getBoundingClientRect();
+      return { title: { x: title.x - header.x, y: title.y - header.y, width: title.width }, score: { x: score.x - header.x, y: score.y - header.y }, distribution: { x: distribution.x - header.x, y: distribution.y - header.y }, width: header.width };
+    });
+    assert(positions[0].distribution.x > positions[0].title.x + positions[0].title.width, 'row must place distribution beside the grouped summary');
+    assert(positions[1].score.y > positions[1].title.y, 'stack must place score below title');
+    assert(positions[2].title.x > positions[1].title.x + 100, 'center must center the title');
+  });
+  check('dark mode changes rendered text and panel, custom colors remain usable', () => {
+    const light = mount({});
+    const dark = mount({ theme: { dark: true } });
+    const style = root => getComputedStyle(root.querySelector('.rw-card'));
+    assert(style(light).backgroundColor !== style(dark).backgroundColor, 'dark panel stayed light');
+    assert(getComputedStyle(light.querySelector('.rw-card-text')).color !== getComputedStyle(dark.querySelector('.rw-card-text')).color, 'dark text stayed dark');
+    const custom = mount({ theme: { dark: true, panel: '#223344', text: '#ddeeff' } });
+    assert(style(custom).backgroundColor === 'rgb(34, 51, 68)', 'explicit custom panel was overwritten');
+    assert(getComputedStyle(dark).backgroundColor !== 'rgba(0, 0, 0, 0)', 'dark heading has no dark background');
+  });
+  check('hidden distribution does not remove an explicitly enabled summary', () => {
+    const root = mount({ visibility: { ratingDistribution: false } });
+    const title = root.querySelector('[data-role="widget-title"]');
+    assert(title && title.getClientRects().length > 0, 'summary disappeared with distribution');
+    const distribution = root.querySelector('[data-role="distwrap"]');
+    assert(!distribution || !distribution.getClientRects().length, 'distribution remains visible');
+  });
+  check('media duration can be hidden without removing video playback', () => {
+    const shown = mount({ layout: { mediacard: { videoBadge: true } } });
+    assert(shown.querySelector('.rw-mt-dur')?.textContent === '0:24', 'duration is not formatted as playback time');
+    const hidden = mount({ layout: { mediacard: { videoBadge: false } } });
+    assert(!hidden.querySelector('.rw-mt-dur'), 'duration remains visible');
+    assert(hidden.querySelector('.rw-media-set [data-media-viewer]'), 'video became inaccessible');
+  });
+  check('seller answer heading can be removed without losing the answer', () => {
+    const root = mount({ answers: { title: 'Магазин отвечает', showTitle: false } });
+    const answer = root.querySelector('.rw-answer');
+    assert(answer.textContent.trim() === review.answer.text, 'hidden answer heading still rendered');
+  });
+  check('inline form is immediately editable and its fields remain usable', () => {
+    const root = mount({ layout: { sections: ['list', 'form'] }, form: { mode: 'inline' } }, {
+      sellerArticle: 'example', submissionUrl: '/not-submitted',
+      submissionConfig: { enabled: true, allowedTypes: [], customFields: [] },
+    });
+    const form = root.querySelector('[data-role="submit-form"]');
+    assert(form, 'inline form still requires opening');
+    const name = form.querySelector('[name="authorName"]');
+    assert(name.getBoundingClientRect().height >= 36, 'form field uses tiny browser default styling');
+    name.value = 'Покупатель';
+    name.dispatchEvent(new Event('input', { bubbles: true }));
+    form.querySelector('[data-role="form-star"]').click();
+    assert(root.querySelector('[name="authorName"]').value === 'Покупатель', 'rating change discarded entered name');
+  });
+  check('header-only form action opens modal without duplicate section action', () => {
+    const root = mount({ layout: { sections: ['summary', 'list', 'form'] }, form: { mode: 'button', ctaMode: 'header' } }, {
+      sellerArticle: 'example', submissionUrl: '/not-submitted',
+      submissionConfig: { enabled: true, allowedTypes: [], customFields: [] },
+    });
+    const action = root.querySelector('[data-role="head-cta"]');
+    assert(action && action.getClientRects().length, 'header action missing');
+    assert(!root.querySelector('[data-role="form-cta-open"]')?.getClientRects().length, 'duplicate section action');
+    action.click();
+    assert(root.querySelector('[data-role="form-modal"]').open, 'header action did not open form');
+    root.querySelector('[data-role="form-modal-close"]').click();
+    assert(!root.querySelector('[data-role="form-modal"]').open, 'form cannot be closed');
+  });
+  check('live appearance updates preserve entered form data and removed sections', () => {
+    const root = document.createElement('section');
+    document.body.append(root);
+    const handle = ReviewsWidget.mount(root, {
+      reviews: [review], preview: true,
+      config: { layout: { sections: ['list', 'form'] }, form: { mode: 'inline' } },
+    });
+    const form = root.querySelector('[data-role="submit-form"]');
+    assert(form, 'preview has no editable form');
+    form.elements.authorName.value = 'Анна';
+    form.elements.text.value = 'Черновик, который нельзя потерять';
+    handle.updateConfig({ theme: { accent: '#006655' }, layout: { sections: ['list', 'form'] }, form: { mode: 'inline' } });
+    assert(root.querySelector('[name="authorName"]').value === 'Анна', 'appearance update lost the author');
+    assert(root.querySelector('[name="text"]').value === 'Черновик, который нельзя потерять', 'appearance update lost review text');
+    handle.updateConfig({ layout: { sections: ['list'] } });
+    const formSection = root.querySelector('[data-section="form"]');
+    assert(!formSection || !formSection.getClientRects().length, 'removed form section returned');
+    handle.destroy();
+  });
+  check('wall video without poster remains visible and opens playback', () => {
+    const root = mount({ layout: { mode: 'wall' } }, {
+      reviews: [{ ...review, media: [{ kind: 'video', url: '../assets/demo-review-1.mp4' }] }],
+    });
+    const tile = root.querySelector('.rw-wall-tile');
+    assert(tile.getBoundingClientRect().height >= 44, 'posterless video tile collapsed');
+    tile.click();
+    assert(root.querySelector('[data-role="media-viewer"]').open, 'posterless video cannot open');
+    assert(root.querySelector('[data-role="viewer-stage"] video'), 'posterless video has no player');
+    root.querySelector('[data-role="viewer-close"]').click();
+  });
+  check('marketplace icon mode preserves filtering and custom labels', () => {
+    const root = mount({ appearance: { marketplaceDisplay: 'icons' }, layout: { sections: ['filters', 'list'] } }, {
+      reviews: [review, { ...review, marketplace: 'ozon', externalReviewId: 'other', text: 'Другой отзыв' }],
+    });
+    const wb = root.querySelector('[data-chip="marketplace:wb"]');
+    assert(wb.querySelector('img')?.alt === 'Wildberries', 'icon has no accessible marketplace name');
+    wb.click();
+    assert(root.querySelectorAll('.rw-card').length === 1 && root.querySelector('.rw-card-text').textContent === review.text, 'icon chip stopped filtering');
+    const renamed = mount({ appearance: { marketplaceDisplay: 'icons' }, marketplacePolicy: { wb: { label: 'Мой источник' } } });
+    const badge = renamed.querySelector('.rw-badge');
+    assert(!badge.querySelector('img') && badge.textContent === 'Мой источник', 'icon disclosed a renamed source');
+  });
+  async function checkPendingSubmission() {
+    const root = mount({ layout: { sections: ['summary', 'list', 'form'] }, form: { mode: 'button', ctaMode: 'header' } }, {
+      reviews: [], sellerArticle: 'example', submissionUrl: '/__submission-check',
+      submissionConfig: { enabled: true, allowedTypes: [] },
+    });
+    const nativeFetch = window.fetch;
+    let failRequest;
+    window.fetch = (url, options) => String(url) === '/__submission-check'
+      ? new Promise(resolve => { failRequest = () => resolve(new Response(JSON.stringify({ error: 'Временная ошибка' }), { status: 503 })); })
+      : nativeFetch(url, options);
+    try {
+      root.querySelector('[data-role="head-cta"]').click();
+      const form = root.querySelector('[data-role="form-modal"] form');
+      form.elements.authorName.value = 'Анна';
+      form.elements.authorEmail.value = 'anna@example.test';
+      form.elements.text.value = 'Сохранить при ошибке';
+      form.elements.privacyConsent.checked = true;
+      form.querySelector('[data-star="5"]').click();
+      form.requestSubmit();
+      root.querySelector('[data-role="form-modal-close"]').click();
+      root.querySelector('[data-role="head-cta"]').click();
+      failRequest();
+      const settled = new Promise(resolve => {
+        const observer = new MutationObserver(() => {
+          if (!root.querySelector('[data-role="form-modal"] [type="submit"]').disabled) {
+            observer.disconnect();
+            clearTimeout(timeout);
+            resolve();
+          }
+        });
+        const timeout = setTimeout(() => { observer.disconnect(); resolve(); }, 2000);
+        observer.observe(root, { subtree: true, attributes: true, childList: true });
+      });
+      await settled;
+      check('reopened form shows failed request and permits retry', () => {
+        const current = root.querySelector('[data-role="form-modal"] form');
+        assert(!current.querySelector('[type="submit"]').disabled, 'retry remains disabled');
+        assert(current.querySelector('[data-role="form-error"]').textContent === 'Временная ошибка', 'request error is absent');
+        assert(current.elements.text.value === 'Сохранить при ошибке', 'request failure lost entered review');
+      });
+    } finally {
+      window.fetch = nativeFetch;
+      root.remove();
+    }
+  }
+  checkPendingSubmission().catch(error => {
+    failures++;
+    output.textContent += 'FAIL pending submission: ' + error.message + '\n';
+  }).finally(() => {
+    output.textContent += '\n' + passed + ' passed, ' + failures + ' failed\n';
+    document.title = failures ? 'FAIL' : 'ALL PASS';
+  });
+</script>
+</html>

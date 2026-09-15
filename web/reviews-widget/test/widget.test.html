@@ -267,6 +267,37 @@
   })(), true);
 
 
+  // Regression: popup star updates must preserve native draft controls and custom fields.
+  eq("popup star preserves draft values", (function () {
+    var host = mountRoot({
+      reviews: [], context: "product", submissionUrl: "/api/review-submissions",
+      submissionConfig: { enabled: true, allowedTypes: ["image/png"], customFields: [
+        { id: "height", label: "Рост", type: "chips", options: ["158", "164"] },
+        { id: "size", label: "Размер", type: "select", options: ["42", "44"] },
+      ] },
+      config: { form: { mode: "button", fields: { title: true, email: true, media: true } } },
+    });
+    host.querySelector('[data-role="head-cta"], [data-role="write-cta"]').click();
+    var modal = host.querySelector('[data-role="form-modal"]');
+    var form = modal.querySelector('[data-role="submit-form"]');
+    form.elements.authorName.value = "Анна";
+    form.elements.title.value = "Заголовок";
+    form.elements.authorEmail.value = "anna@example.test";
+    form.elements.text.value = "Текст отзыва";
+    modal.querySelector('[data-custom-value="158"]').click();
+    form.elements["custom-size"].value = "44";
+    form.querySelector('[data-role="form-star"][data-star="4"]').click();
+    var kept = form.elements.authorName.value === "Анна"
+      && form.elements.title.value === "Заголовок"
+      && form.elements.authorEmail.value === "anna@example.test"
+      && form.elements.text.value === "Текст отзыва"
+      && form.elements["custom-height"].value === "158"
+      && form.elements["custom-size"].value === "44"
+      && modal.querySelectorAll('[data-role="form-star"].is-on').length === 4;
+    host.remove();
+    return kept;
+  })(), true);
+
   // ── Product panel in lightbox (layout.video.productPanel) ──────────────────
   function panelReview() {
     return {
@@ -354,12 +385,6 @@
     host.remove();
     return ok;
   })(), true);
-  eq("write CTA visible in product context", (function () {
-    var host = mountRoot({ reviews: [] });
-    var ok = host.querySelector('[data-role="write-cta"]').hidden === false;
-    host.remove();
-    return ok;
-  })(), true);
   eq("write CTA hidden on homepage", (function () {
     var host = mountRoot({ reviews: [], context: "homepage" });
     var ok = host.querySelector('[data-role="write-cta"]').hidden === true;
@@ -420,7 +445,7 @@
     chip.click();
     var cards = host.querySelectorAll(".rw-card");
     var ok = cards.length === 1 && cards[0].textContent.indexOf("Пять звёзд") !== -1;
-    chip.click();
+    [...host.querySelectorAll(".rw-chip")].find(function (c) { return c.textContent === "5★"; }).click();
     ok = ok && host.querySelectorAll(".rw-card").length === 2;
     host.remove();
     return ok;

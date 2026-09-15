@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Trust and rating checks</title>
+<link rel="stylesheet" href="../reviews-widget.css">
+<pre id="out"></pre>
+<script src="../reviews-widget.js"></script>
+<script>
+(async () => {
+  let passed = 0, failed = 0;
+  const out = document.querySelector('#out'), mounted = [];
+  const review = (id, rating, text = `Отзыв ${id}`) => ({ id, marketplace: 'wb', rating, authorName: 'Покупатель', text, createdAt: '2026-01-01T12:00:00Z', media: [] });
+  const data = [review(1,5,'Плотная ткань'),review(2,4,'Удобная посадка'),review(3,3,'Ткань тонкая'),review(4,1,'Не подошло')];
+  const assert = (condition, message) => { if (!condition) throw new Error(message); };
+  const until = async (predicate, message) => {
+    const end = performance.now() + 2500;
+    while (!predicate()) { if (performance.now() > end) throw new Error(message); await new Promise(r => setTimeout(r,20)); }
+  };
+  function mount(config = {}, options = {}) {
+    const root = document.createElement('section');root.style.width='1000px';document.body.append(root);
+    const handle = ReviewsWidget.mount(root, { reviews:data, ...options, config:{...config, layout:{sections:['summary','filters','list'],pageSize:12,loadMoreAction:'dialog',...config.layout},defaults:{minRating:0,requireText:false,...config.defaults}} });
+    mounted.push({root,handle});return root;
+  }
+  async function check(name, fn) {
+    try { await fn(); passed++; out.textContent += 'PASS '+name+'\n'; }
+    catch (error) { failed++; out.textContent += 'FAIL '+name+': '+error.message+'\n'; }
+    finally { mounted.splice(0).forEach(({root,handle})=>{handle.destroy();root.remove();}); }
+  }
+  await check('high-rating percentage is not presented as recommendation', async()=>{
+    const root=mount({}, {reviews:[...data,review(5,null)]});
+    const share=root.querySelector('[data-role="recommend"]').textContent;
+    assert(share.includes('50%')&&share.includes('4')&&share.includes('5')&&!share.includes('рекоменду'), 'high-rating percentage or wording is wrong');
+  });
+  await check('merchant minimum constrains chips and distribution without changing configuration', async()=>{
+    const root=mount({defaults:{minRating:4}});
+    const low=root.querySelector('[data-chip="rating:3"]');
+    assert(!low||low.disabled, '3-star filter offered below merchant minimum');
+    const lowRow=root.querySelector('[data-role="distwrap"] [data-rating="3"]');
+    assert(!lowRow||lowRow.disabled, 'distribution bypasses minimum');
+    assert(root.querySelector('[data-role="summary"]').textContent.includes('2'), 'total includes excluded reviews');
+    assert(root.__reviewsWidgetConfig.defaults.minRating===4, 'merchant minimum was changed');
+  });
+  await check('distribution reports counts and filters independently of visible filter section', async()=>{
+    const root=mount({layout:{sections:['summary','list']}});
+    const row=root.querySelector('[data-role="distwrap"] button[data-rating="3"]');
+    assert(row, 'rating distribution is not interactive');
+    assert(row.querySelector('.rw-dist-count').textContent.trim()==='1', 'rating count incorrect');
+    row.click();
+    assert(root.querySelectorAll('.rw-card').length===1&&root.querySelector('.rw-card-text').textContent==='Ткань тонкая', 'distribution click did not filter');
+    root.querySelector('[data-role="distwrap"] button[data-rating="3"]').click();
+    assert(root.querySelectorAll('.rw-card').length===4, 'rating toggle did not restore results');
+  });
+  await check('total is stable while result count follows buyer search', async()=>{
+    const root=mount();
+    const search=root.querySelector('[data-role="search"]');search.value='посадка';search.dispatchEvent(new Event('input',{bubbles:true}));
+    assert(root.querySelector('[data-role="summary"]').textContent.includes('4'), 'search altered total');
+    const result=root.querySelector('[data-role="list-results"]');
+    assert(result&&/Найдено\s+1/.test(result.textContent), 'inline found count missing');
+    assert(/Всего\s+4/.test(root.textContent), 'exact total not labelled');
+  });
+  await check('partial aggregate does not turn loaded records into complete statistics', async()=>{
+    const root=mount({}, {reviews:data.slice(0,2),aggregate:{count:120,ratingCount:120,ratingAvg:4.7,recommendPercent:90,distribution:[{stars:5,percent:33.3}]},fullFeedSource:'/__not_requested',fullFeedOffset:2});
+    const total=root.querySelector('[data-role="summary"]').textContent;
+    assert(/Загружено\s+2/.test(total), 'partial pool presented as total');
+    const distribution=root.querySelector('[data-role="distwrap"]');
+    assert(parseInt(distribution.querySelector('[data-rating="5"] .rw-dist-count').textContent,10)===1, 'five-star count was fabricated from remote percentages');
+    assert(parseInt(distribution.querySelector('[data-rating="4"] .rw-dist-count').textContent,10)===1, 'four-star count does not match observed records');
+    assert(root.textContent.includes('среди загруженных')||root.textContent.includes('По загруженным'), 'partial statistic lacks qualifier');
+  });
+  await check('completed remote pool replaces stale seed totals and survives modal close', async()=>{
+    const nativeFetch=window.fetch;
+    window.fetch=(url,options)=>{
+      const target=new URL(String(url),location.href);
+      if(target.pathname!=='/__trust_feed')return nativeFetch(url,options);
+      const offset=Number(target.searchParams.get('offset'));
+      return Promise.resolve(new Response(JSON.stringify({reviews:data.slice(offset,offset+2)}),{headers:{'Content-Type':'application/json'}}));
+    };
+    try {
+      const root=mount({}, {reviews:data.slice(0,1),aggregate:{count:1,ratingCount:1,ratingAvg:5},fullFeedSource:'/__trust_feed',fullFeedOffset:0,fullFeedLimit:2});
+      root.querySelector('[data-role="load-more"]').click();
+      const dialog=root.querySelector('[data-role="all-reviews"]');
+      await until(()=>/Всего\s+4/.test(dialog.querySelector('[data-role="results-count"]').textContent), 'remote total stayed seed-sized or incomplete');
+      dialog.querySelector('[data-role="all-reviews-close"]').click();
+      assert(/Всего\s+4/.test(root.querySelector('[data-role="summary"]').textContent), 'outer summary restored stale seed total');
+    } finally {window.fetch=nativeFetch;}
+  });
+  await check('zero ratings produce no invented high-rating share', async()=>{
+    const root=mount({}, {reviews:[review(9,null)]});
+    const share=root.querySelector('[data-role="recommend"]');
+    assert(!share||share.hidden||!share.textContent.trim(), 'unrated pool displays percentage');
+    assert(!root.textContent.includes('NaN'), 'unrated pool contains NaN');
+  });
+  await check('appearance updates preserve rating selection with hidden filters', async()=>{
+    const config={layout:{sections:['summary','list']},defaults:{minRating:0,requireText:false}};
+    const root=mount(config);
+    root.querySelector('[data-rating="3"]').click();
+    root.__reviewsWidget.updateConfig({...config,theme:{accent:'#116655'}});
+    assert(root.querySelectorAll('.rw-card').length===1&&root.querySelector('.rw-card-text').textContent==='Ткань тонкая', 'appearance update cleared rating selection');
+  });
+  await check('invalid ratings are not invented as five-star votes', async()=>{
+    const root=mount({}, {reviews:[review(81,6),review(82,4.5),review(83,4)]});
+    assert(root.querySelector('[data-rating="5"] .rw-dist-count').textContent.trim()==='0', 'invalid rating became a five-star vote');
+    assert(root.querySelector('[data-role="score"]').textContent==='4,0', 'invalid rating affected average');
+  });
+  await check('default public API page limit is not presented as a complete pool', async()=>{
+    const nativeFetch=window.fetch;
+    window.fetch=(url,options)=>new URL(String(url),location.href).pathname==='/api/reviews'
+      ? Promise.resolve(new Response(JSON.stringify({reviews:Array.from({length:100},(_,i)=>review(i+100,5)),count:100}),{headers:{'Content-Type':'application/json'}}))
+      : nativeFetch(url,options);
+    try {
+      const root=mount({}, {reviews:[],source:'/api/reviews'});
+      await until(()=>root.querySelector('[data-role="summary"]').textContent.includes('100'), 'public API response not rendered');
+      assert(/Загружено\s+100/.test(root.querySelector('[data-role="summary"]').textContent), 'default paginated API was treated as complete');
+    } finally {window.fetch=nativeFetch;}
+  });
+  out.textContent+='\n'+passed+' passed, '+failed+' failed\n';document.title=failed?'FAIL':'ALL PASS';
+})();
+</script>
+</html>

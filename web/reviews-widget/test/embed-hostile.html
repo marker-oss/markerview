@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <link rel="stylesheet" href="../reviews-widget.css" />
+  <title>Embed hostile host — widget robustness fixture</title>
+  <!--
+    Aggressive host-page fixture: everything that breaks embedded widgets.
+    Checks (see status line at top):
+      1. Inherited leakage: body { line-height / letter-spacing / text-transform /
+         color / font-family } must NOT restyle widget text.
+      2. Global element selectors (button/img/*) must NOT restyle widget controls
+         in shadow mode.
+      3. Transformed ancestor: dialog viewer must still center on the viewport.
+      4. Narrow container: container queries must adapt, no horizontal overflow.
+      5. box-sizing trap: content-box globals must not change widget metrics.
+  -->
+  <style>
+    /* ── hostile inheritance: all inheritable properties poisoned ── */
+    body {
+      margin: 0;
+      padding: 20px 20px 80px;
+      background: #111827;
+      color: #fde047;
+      font-family: "Comic Sans MS", "Segoe Print", cursive;
+      font-size: 21px;
+      line-height: 2.8;
+      letter-spacing: 0.35em;
+      word-spacing: 0.4em;
+      text-transform: uppercase;
+      text-align: center;
+      font-style: italic;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    /* ── hostile global selectors (light-DOM only; shadow blocks these) ── */
+    * { box-sizing: content-box; }
+    button { border: 4px dotted red !important; background: lime; border-radius: 0; }
+    img { border: 6px solid red; padding: 8px; margin: 8px; }
+    input, select, textarea { border: 4px dotted red; background: lime; }
+    /* ── hostile stacking + containing block: sticky transformed header ── */
+    .site-header {
+      position: sticky;
+      top: 0;
+      z-index: 99999;
+      background: #7f1d1d;
+      color: #fff;
+      padding: 16px;
+      transform: translateZ(0);
+      filter: saturate(1.2);
+      will-change: transform;
+    }
+    /* ── transformed wrapper around the widget anchor ── */
+    .transformed-wrap {
+      transform: perspective(1200px) rotateX(0.2deg);
+      will-change: transform;
+      outline: 2px dashed #f00;
+      padding: 8px;
+      margin: 16px 0;
+    }
+    /* ── narrow sidebar: widget must adapt inside 320px ── */
+    .sidebar {
+      width: 320px;
+      margin: 24px auto;
+      border: 2px dashed #9333ea;
+      padding: 6px;
+      overflow: hidden;
+    }
+    .wide {
+      max-width: 900px;
+      margin: 24px auto;
+      border: 2px dashed #16a34a;
+      padding: 6px;
+    }
+    h1 { color: #fff; text-align: center; }
+    .status {
+      position: sticky;
+      top: 0;
+      z-index: 200000;
+      background: #fff;
+      color: #000;
+      padding: 6px 12px;
+      font: 700 13px/1.4 system-ui, sans-serif;
+      letter-spacing: 0;
+      text-transform: none;
+      white-space: normal;
+      text-align: left;
+      border-bottom: 2px solid #000;
+    }
+  </style>
+</head>
+<body>
+  <div class="status" id="status">RUNNING…</div>
+  <h1>Hostile host page</h1>
+  <div class="site-header">Sticky transformed header · z 99999</div>
+
+  <div class="sidebar">
+    <h2 style="font-size: 16px">Narrow container (320px)</h2>
+    <div class="transformed-wrap">
+      <section id="widget-narrow" class="reviews-widget" aria-label="Отзывы в узком контейнере"></section>
+    </div>
+  </div>
+
+  <div class="wide">
+    <h2 style="font-size: 16px">Wide container (900px)</h2>
+    <div class="transformed-wrap">
+      <section id="widget-wide" class="reviews-widget" aria-label="Отзывы в широком контейнере"></section>
+    </div>
+  </div>
+
+  <div class="wide">
+    <h2 style="font-size: 16px">Shadow hosts (mountShadow — isolation fixture)</h2>
+    <div class="transformed-wrap" style="display:flex; gap:24px; align-items:flex-start">
+      <section id="widget-shadow-narrow" style="width:320px" aria-label="Shadow host, narrow"></section>
+      <section id="widget-shadow-wide" style="width:900px; max-width:100%" aria-label="Shadow host, wide"></section>
+    </div>
+  </div>
+
+  <script>
+    // Load widget the way the real embed does: fetch text → inject script
+    // (mirrors loader.js; also sidesteps stale script-tag caches in test browsers).
+    fetch("../reviews-widget.js").then(function (r) { return r.text(); }).then(function (text) {
+      var s = document.createElement("script");
+      s.textContent = text;
+      document.head.appendChild(s);
+      try {
+        var config = {
+          appearance: { preset: "default", viewAllHref: "#all" },
+          theme: { accent: "#1677ff", accentInk: "#ffffff", text: "#0f2248", muted: "#62708d", panel: "#ffffff", border: "#dfe3eb", star: "#ffb800", dark: false },
+          typography: { inheritSite: false, radius: 12, density: "comfortable", scale: 1 },
+          layout: { mode: "list", columns: 2, pageSize: 3, pagination: "more" },
+          visibility: { photos: true, sellerAnswers: true, prosCons: true, marketplaceBadges: true, ratingDistribution: true, videoRail: true, filters: true, questions: false },
+          defaults: { minRating: 0, requireText: false, marketplace: "all", initialSort: "newest" }
+        };
+        ReviewsWidget.mount(document.querySelector("#widget-narrow"), {
+          reviews: ReviewsWidget.sampleReviews,
+          productName: "Товар в сайдбаре",
+          config: config
+        });
+        ReviewsWidget.mount(document.querySelector("#widget-wide"), {
+          reviews: ReviewsWidget.sampleReviews,
+          productName: "Товар в широком блоке",
+          config: config
+        });
+        var findings = [];
+        function probeRoot(rootEl, label) {
+          if (!rootEl) { findings.push(label + ": widget NOT mounted"); return; }
+          var cardText = rootEl.querySelector(".rw-card-text");
+          var score = rootEl.querySelector(".rw-score-value");
+          var cs = cardText ? getComputedStyle(cardText) : null;
+          if (cs) {
+            if (cs.textTransform !== "none") findings.push(label + ": text-transform leaked (" + cs.textTransform + ")");
+            if (cs.letterSpacing !== "normal" && cs.letterSpacing !== "0px") findings.push(label + ": letter-spacing leaked (" + cs.letterSpacing + ")");
+            if (cs.fontFamily.indexOf("Comic") !== -1) findings.push(label + ": font-family leaked");
+            if (cs.color !== "rgb(15, 34, 72)") findings.push(label + ": color leaked (" + cs.color + ")");
+          } else {
+            findings.push(label + ": no .rw-card-text");
+          }
+          if (score) {
+            var scs = getComputedStyle(score);
+            if (scs.display === "inline") findings.push(label + ": root display:inline (all:initial reset display)");
+          }
+          var overflow = rootEl.scrollWidth > rootEl.clientWidth + 1;
+          findings.push(label + ": mounted, overflowX=" + overflow);
+        }
+        // probe(sel, label) checks a light mount in the document; probeShadow(id, label)
+        // drills into the widget shadow root — same checks, boundary crossed.
+        function probe(sel, label) {
+          probeRoot(document.querySelector(sel), label);
+        }
+        function probeShadow(id, label) {
+          var host = document.getElementById(id);
+          var rootEl = host && host.shadowRoot ? host.shadowRoot.querySelector(".reviews-widget") : null;
+          probeRoot(rootEl, label);
+        }
+        function finalize() {
+          var okDialog = typeof document.createElement("dialog").showModal === "function";
+          findings.push("dialog.showModal supported: " + okDialog);
+          var pass = findings.every(function (f) { return !/leaked|NOT mounted|no \.rw-card-text|display:inline|overflowX=true|failed/.test(f); });
+          var status = document.getElementById("status");
+          status.dataset.result = pass ? "PASS" : "FAIL";
+          status.textContent = (pass ? "PASS: " : "FAIL: ") + findings.join(" | ");
+          status.dataset.done = "yes";
+          document.title = pass ? "HOSTILE PASS" : "HOSTILE FAIL";
+        }
+        // Light mounts probe immediately; shadow mounts probe after styleText resolves.
+        probe("#widget-narrow", "narrow(light)");
+        probe("#widget-wide", "wide(light)");
+        var cssHref = new URL("../reviews-widget.css", location.href).href;
+        fetch(cssHref).then(function (r) { return r.text(); }).then(function (styleText) {
+          var shadowOpts = function (name) {
+            return {
+              reviews: ReviewsWidget.sampleReviews,
+              productName: name,
+              config: config,
+              styleText: styleText
+            };
+          };
+          ReviewsWidget.mountShadow(document.querySelector("#widget-shadow-narrow"), shadowOpts("Shadow товар (узкий)"));
+          ReviewsWidget.mountShadow(document.querySelector("#widget-shadow-wide"), shadowOpts("Shadow товар (широкий)"));
+          probeShadow("widget-shadow-narrow", "narrow(shadow)");
+          probeShadow("widget-shadow-wide", "wide(shadow)");
+          finalize();
+        }).catch(function (e) {
+          findings.push("shadow mount failed: " + e.message);
+          finalize();
+        });
+      } catch (err) {
+        var status = document.getElementById("status");
+        status.dataset.result = "ERROR";
+        status.textContent = "SCRIPT ERROR: " + err.message;
+        document.title = "HOSTILE ERROR";
+      }
+    }).catch(function (e) {
+      var status = document.getElementById("status");
+      status.dataset.result = "LOAD ERROR";
+      status.textContent = "WIDGET JS LOAD ERROR: " + e.message;
+      document.title = "HOSTILE LOAD ERROR";
+    });
+  </script>
