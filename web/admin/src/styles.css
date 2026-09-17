@@ -1133,6 +1133,20 @@ label.fld,
   gap: 6px;
 }
 
+.auth-panel label.auth-consent {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--soft-muted);
+}
+
+.auth-panel label.auth-consent input {
+  min-height: 0;
+  width: 18px;
+  height: 18px;
+}
+
 .auth-panel input {
   min-height: 44px;
   font-size: 15px;

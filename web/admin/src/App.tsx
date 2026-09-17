@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { apiGet, apiWrite, clearCSRF } from './api'
 import { Icon } from './components/icons'
 import ToastHost from './components/ToastHost'
-import Billing from './pages/Billing'
 import Dashboard from './pages/Dashboard'
 import Editor from './pages/Editor'
 import Marketplaces from './pages/Marketplaces'
@@ -11,15 +10,19 @@ import QuestionsPanel from './pages/Questions'
 import Reviews from './pages/Reviews'
 import Settings from './pages/Settings'
 import Status from './pages/Status'
-// OperatorPage is replaced by the hosted build (closed-source overlay):
-// the open-source build ships a hidden no-op. The page itself renders only
-// for owner sessions (server-gated /admin/api/saas/*).
+// OperatorPage/BillingPage are installed by the hosted build (cloud entry
+// module) before render; the open-source build ships neither. Operator
+// renders only for owner sessions (server-gated /admin/api/saas/*).
 let OperatorPage: ComponentType | null = null
+let BillingPage: ComponentType | null = null
 export function setOperatorPage(component: ComponentType) {
   OperatorPage = component
 }
+export function setBillingPage(component: ComponentType) {
+  BillingPage = component
+}
 
-type Mode = 'loading' | 'setup' | 'login' | 'authed'
+type Mode = 'loading' | 'setup' | 'login' | 'signup' | 'authed'
 type Route =
   | 'dashboard'
   | 'reviews'
@@ -50,7 +53,6 @@ const NAV: NavGroup[] = [
       { route: 'status', label: 'Состояние', icon: 'pulse' },
     ],
   },
-  { label: 'Аккаунт', items: [{ route: 'billing', label: 'Подписка', icon: 'card' }] },
 ]
 
 const CRUMBS: Record<Route, string> = {
@@ -66,6 +68,9 @@ const CRUMBS: Record<Route, string> = {
 
 const LEGACY_ROUTES: Record<string, Route> = {
   '': 'dashboard',
+  login: 'dashboard',
+  register: 'dashboard',
+  signup: 'dashboard',
   dashboard: 'dashboard',
   reviews: 'reviews',
   questions: 'reviews',
@@ -90,16 +95,19 @@ function currentRoute(): Route {
   if (raw in LEGACY_ROUTES) return LEGACY_ROUTES[raw]
   return 'dashboard'
 }
-async function postAuth(path: string, body: unknown) {
+async function postAuth(path: string, body: unknown): Promise<unknown> {
   const res = await fetch(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
+  const data: unknown = await res.json().catch(() => ({}))
   if (!res.ok) {
-    const data = (await res.json().catch(() => ({ error: 'Запрос не выполнен' }))) as { error?: string }
-    throw new Error(data.error ?? 'Запрос не выполнен')
+    const message =
+      data && typeof data === 'object' && 'error' in data && typeof data.error === 'string' ? data.error : ''
+    throw new Error(message || 'Запрос не выполнен')
   }
+  return data
 }
 
 type VersionInfo = {
@@ -131,12 +139,16 @@ function plural(n: number, forms: [string, string, string]) {
   return forms[2]
 }
 
-// Sidebar nav is derived from mode/hasOperator — plain computation, never a
-// hook: this function is called after early returns in App (loading/auth),
-// and a conditional useMemo here throws "Rendered fewer hooks" (#310).
-function buildNav(hasOperator: boolean): NavGroup[] {
+// Sidebar nav is derived from mode/hasOperator/hasBilling — plain
+// computation, never a hook: this function is called after early returns in
+// App (loading/auth), and a conditional useMemo here throws "Rendered fewer
+// hooks" (#310). The account group exists only in the hosted build.
+function buildNav(hasOperator: boolean, hasBilling: boolean): NavGroup[] {
   const groups = NAV.map((g) => ({ ...g, items: [...g.items] }))
-  if (hasOperator) groups[3].items.push({ route: 'operator', label: 'SaaS', icon: 'panel' })
+  const account: NavItem[] = []
+  if (hasBilling) account.push({ route: 'billing', label: 'Подписка', icon: 'card' })
+  if (hasOperator) account.push({ route: 'operator', label: 'SaaS', icon: 'panel' })
+  if (account.length > 0) groups.push({ label: 'Аккаунт', items: account })
   return groups
 }
 
@@ -145,6 +157,11 @@ export default function App() {
   const [route, setRoute] = useState<Route>(currentRoute)
   const [login, setLogin] = useState('')
   const [password, setPassword] = useState('')
+  const [shopOrigin, setShopOrigin] = useState('')
+  const [consent, setConsent] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [signupEnabled, setSignupEnabled] = useState(false)
+  const [verificationRequired, setVerificationRequired] = useState(false)
   const [error, setError] = useState('')
   const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null)
   const [dismissedVersion, setDismissedVersion] = useState(() => localStorage.getItem(DISMISSED_KEY) ?? '')
@@ -155,6 +172,7 @@ export default function App() {
   // The operator tab appears only when the operator page component was
   // installed (hosted build) AND the session belongs to an owner.
   const hasOperator = role === 'owner' && OperatorPage !== null
+  const hasBilling = BillingPage !== null
 
   useEffect(() => {
     apiGet<{ user_id: number; role: string }>('/admin/api/me')
@@ -165,19 +183,27 @@ export default function App() {
       .catch(() => {
         fetch('/admin/api/setup-status')
           .then((s) => s.json())
-          .then((data: { needs_setup: boolean }) => setMode(data.needs_setup ? 'setup' : 'login'))
+          .then((data: { needs_setup: boolean; signup_enabled?: boolean }) => {
+            setSignupEnabled(data.signup_enabled === true)
+            if (data.needs_setup) setMode('setup')
+            else if (data.signup_enabled === true && /^#\/(register|signup)$/.test(window.location.hash)) setMode('signup')
+            else setMode('login')
+          })
           .catch(() => setMode('login'))
       })
   }, [])
 
   useEffect(() => {
     const onHash = () => {
+      const hash = window.location.hash
+      if (/^#\/(register|signup)$/.test(hash) && signupEnabled) setMode('signup')
+      else if (hash === '#/login' && mode !== 'authed') setMode('login')
       setRoute(currentRoute())
       setSbOpen(false)
     }
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
-  }, [])
+  }, [signupEnabled, mode])
 
   useEffect(() => {
     if (mode !== 'authed') return
@@ -200,18 +226,42 @@ export default function App() {
   async function submit(event: React.FormEvent) {
     event.preventDefault()
     setError('')
+    setSubmitting(true)
     try {
-      await postAuth(mode === 'setup' ? '/admin/api/setup' : '/admin/api/login', { login, password })
+      if (mode === 'setup') {
+        await postAuth('/admin/api/setup', { login, password })
+        await postAuth('/admin/api/login', { login, password })
+      } else if (mode === 'signup') {
+        const result = await postAuth('/admin/api/signup', { login, password, shopOrigin })
+        if (result && typeof result === 'object' && 'status' in result && result.status === 'verification_required') {
+          setVerificationRequired(true)
+          setPassword('')
+          return
+        }
+      } else {
+        await postAuth('/admin/api/login', { login, password })
+      }
+      const me = await apiGet<{ user_id: number; role: string }>('/admin/api/me')
+      setRole(me.role)
       setMode('authed')
       setPassword('')
-      try {
-        const me = await apiGet<{ user_id: number; role: string }>('/admin/api/me')
-        setRole(me.role)
-      } catch {
-        setRole('')
-      }
+      if (mode === 'signup') window.location.hash = '#/marketplaces'
     } catch (err) {
       setError(err instanceof Error ? authError(err.message) : 'Запрос не выполнен')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  async function resendVerification() {
+    setError('')
+    setSubmitting(true)
+    try {
+      await postAuth('/admin/auth/resend-verification', { email: login })
+    } catch (err) {
+      setError(err instanceof Error ? authError(err.message) : 'Запрос не выполнен')
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -240,20 +290,54 @@ export default function App() {
 
   if (mode !== 'authed') {
     const setup = mode === 'setup'
+    const signup = mode === 'signup'
+    const brand = (
+      <div className="auth-brand">
+        <span className="sb-mark">R</span>
+        <span>
+          <b>Виджет отзывов</b>
+          <small>панель управления</small>
+        </span>
+      </div>
+    )
+    if (verificationRequired) {
+      return (
+        <>
+          <main className="auth-screen">
+            <div className="auth-panel">
+              {brand}
+              <div>
+                <p className="eyebrow">Регистрация</p>
+                <h1 style={{ marginTop: 4 }}>Проверьте почту</h1>
+                <p className="sub" style={{ marginTop: 8 }}>
+                  Мы отправили письмо со ссылкой для подтверждения на <b>{login}</b>.
+                </p>
+              </div>
+              <button type="button" onClick={resendVerification} disabled={submitting}>
+                {submitting ? 'Подождите…' : 'Отправить письмо ещё раз'}
+              </button>
+              {error && <p className="error" role="alert">{error}</p>}
+              <p className="sub">
+                <a href="#/login" onClick={() => setVerificationRequired(false)}>
+                  Вернуться ко входу
+                </a>
+              </p>
+            </div>
+          </main>
+          <ToastHost />
+        </>
+      )
+    }
     return (
       <>
         <main className="auth-screen">
           <form className="auth-panel" onSubmit={submit}>
-            <div className="auth-brand">
-              <span className="sb-mark">R</span>
-              <span>
-                <b>Виджет отзывов</b>
-                <small>панель управления</small>
-              </span>
-            </div>
+            {brand}
             <div>
-              <p className="eyebrow">{setup ? 'Первый запуск' : 'Вход'}</p>
-              <h1 style={{ marginTop: 4 }}>{setup ? 'Создайте администратора' : 'Войдите в админку'}</h1>
+              <p className="eyebrow">{setup ? 'Первый запуск' : signup ? 'Регистрация' : 'Вход'}</p>
+              <h1 style={{ marginTop: 4 }}>
+                {setup ? 'Создайте администратора' : signup ? 'Попробуйте бесплатно 7 дней' : 'Войдите в админку'}
+              </h1>
               {setup && (
                 <p className="sub" style={{ marginTop: 8 }}>
                   Логин и пароль от этой панели. Храните надёжно — восстановление только через сервер.
@@ -261,8 +345,13 @@ export default function App() {
               )}
             </div>
             <label>
-              <span>Логин</span>
-              <input value={login} onChange={(e) => setLogin(e.target.value)} autoComplete="username" />
+              <span>{signupEnabled ? 'Email' : 'Логин'}</span>
+              <input
+                value={login}
+                onChange={(e) => setLogin(e.target.value)}
+                autoComplete={signupEnabled ? 'email' : 'username'}
+                required
+              />
             </label>
             <label>
               <span>Пароль</span>
@@ -270,11 +359,47 @@ export default function App() {
                 value={password}
                 type="password"
                 onChange={(e) => setPassword(e.target.value)}
-                autoComplete={setup ? 'new-password' : 'current-password'}
+                autoComplete={setup || signup ? 'new-password' : 'current-password'}
+                minLength={8}
+                required
               />
             </label>
-            <button type="submit">{setup ? 'Создать и войти' : 'Войти'}</button>
+            {signup && (
+              <>
+                <label>
+                  <span>Адрес сайта магазина</span>
+                  <input
+                    value={shopOrigin}
+                    type="url"
+                    onChange={(e) => setShopOrigin(e.target.value)}
+                    placeholder="https://myshop.ru"
+                    required
+                  />
+                </label>
+                <label className="auth-consent">
+                  <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} required />
+                  <span>Принимаю оферту и политику конфиденциальности</span>
+                </label>
+              </>
+            )}
+            <button type="submit" disabled={submitting}>
+              {submitting ? 'Подождите…' : setup ? 'Создать и войти' : signup ? 'Создать аккаунт' : 'Войти'}
+            </button>
             {error && <p className="error" role="alert">{error}</p>}
+            {signupEnabled && !setup && (
+              <p className="sub">
+                {signup ? (
+                  <>
+                    <a href="#/login">Уже есть аккаунт? Войти</a> · <a href="/admin/auth/reset">Забыли пароль?</a>
+                  </>
+                ) : (
+                  <>
+                    <a href="#/register">Нет аккаунта? Зарегистрироваться</a> ·{' '}
+                    <a href="/admin/auth/reset">Забыли пароль?</a>
+                  </>
+                )}
+              </p>
+            )}
             {setup && (
               <div className="onboard-checklist">
                 <div className="done">
@@ -306,7 +431,7 @@ export default function App() {
     )
   }
 
-  const nav = buildNav(hasOperator)
+  const nav = buildNav(hasOperator, hasBilling)
 
   const page = (
     <>
@@ -316,7 +441,7 @@ export default function App() {
       {route === 'settings' && <Settings />}
       {route === 'marketplaces' && <Marketplaces />}
       {route === 'status' && <Status />}
-      {route === 'billing' && <Billing />}
+      {route === 'billing' && BillingPage !== null && <BillingPage />}
       {route === 'operator' && OperatorPage !== null && hasOperator && <OperatorPage />}
     </>
   )
@@ -425,5 +550,6 @@ export default function App() {
 function authError(message: string) {
   if (message === 'authentication required') return 'Требуется вход в админку'
   if (message === 'invalid login or password') return 'Неверный логин или пароль'
+  if (message === 'email verification required') return 'Подтвердите email по ссылке из письма'
   return message || 'Запрос не выполнен'
 }
