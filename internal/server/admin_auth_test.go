@@ -110,6 +110,22 @@ func TestStrictTenantModeAdvertisesSignupAndRejectsSetup(t *testing.T) {
 	}
 }
 
+// TestSetupStatusHonoursSignupEnabledHook pins the contract the admin SPA
+// uses to hide the registration form: a hosted install that closed signup
+// reports signup_enabled=false even in strict tenant mode.
+func TestSetupStatusHonoursSignupEnabledHook(t *testing.T) {
+	restore := store.SetStrictTenantModeForTest(true)
+	defer restore()
+	s := newAuthTestServer(t)
+	s.cfg.SignupEnabled = func(context.Context) (bool, error) { return false, nil }
+
+	rec := httptest.NewRecorder()
+	s.adminMux().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/admin/api/setup-status", nil))
+	if rec.Code != http.StatusOK || rec.Body.String() != "{\"needs_setup\":false,\"signup_enabled\":false}\n" {
+		t.Fatalf("setup status = %d %s", rec.Code, rec.Body.String())
+	}
+}
+
 func firstCookie(rec *httptest.ResponseRecorder, name string) *http.Cookie {
 	for _, cookie := range rec.Result().Cookies() {
 		if cookie.Name == name {
