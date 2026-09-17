@@ -16,7 +16,7 @@
     rating: 5, authorName: `Покупатель ${id}`, text: `Отзыв номер ${id}`,
     createdAt: '2026-01-01T12:00:00Z',
     marketplaceReviewUrl: `https://example.test/reviews/${id}`,
-    media: [{ kind: 'photo', url: new URL('../assets/review-fabric.svg', location.href).href + '#' + id }],
+    media: [{ kind: 'photo', url: new URL('../assets/media-placeholder.svg', location.href).href + '#' + id }],
   });
   const reviews = Array.from({ length: 8 }, (_, index) => review(index + 1, index % 2 ? 'ozon' : 'wb'));
   function assert(condition, message) { if (!condition) throw new Error(message); }

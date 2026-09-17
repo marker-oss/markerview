@@ -49,7 +49,7 @@ $public_domain {
 
 	root * $APP_DIR/web
 
-	@cors path /reviews-data /reviews-data/* /loader.js /reviews-widget.js /reviews-widget.css
+	@cors path /reviews-data /reviews-data/* /loader.js /reviews-widget.js /reviews-widget.css /assets/*
 	header @cors {
 		Access-Control-Allow-Origin "$shop_origin"
 		Access-Control-Allow-Methods "GET, OPTIONS"
@@ -72,10 +72,11 @@ $public_domain {
 		Cache-Control "public, max-age=300"
 	}
 
-	@assets path /loader.js /reviews-widget.js /reviews-widget.css
-	header @assets Cache-Control "public, max-age=3600"
+	@assets path /loader.js /reviews-widget.js /reviews-widget.css /assets/*
+	header @assets Cache-Control "no-cache"
 
-	@backend path /api /api/* /admin /admin/* /healthz /user-media /user-media/*
+	# Keep the admin editor and widget runtime on the same embedded version.
+	@backend path /api /api/* /admin /admin/* /healthz /user-media /user-media/* /loader.js /reviews-widget.js /reviews-widget.css /assets/*
 	reverse_proxy @backend 127.0.0.1:8080
 
 	@media path /media

@@ -243,7 +243,7 @@ func (s *Server) handler() http.Handler {
 		}))
 	}
 	mux.Handle("/admin/", s.adminMux())
-	mux.Handle("/", noCacheStatic(http.FileServer(http.Dir(s.cfg.StaticDir))))
+	mux.Handle("/", noCacheStatic(widgetAndStaticHandler(s.cfg.StaticDir)))
 
 	return securityHeaders(s.tenantScope(s.tenantRateLimit(s.cors(s.logRequests(mux)))))
 }

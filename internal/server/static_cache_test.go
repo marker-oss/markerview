@@ -5,12 +5,13 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
 // Static widget assets must demand revalidation so widget JS/CSS updates
-// become visible without a hard refresh: FileServer keeps Last-Modified, so
-// Cache-Control: no-cache lets browsers revalidate (304 or fresh copy).
+// become visible without a hard refresh. External files use Last-Modified;
+// binary-embedded files use an ETag derived from their bytes.
 func TestStaticAssetsNoCache(t *testing.T) {
 	s := newAuthTestServer(t)
 	s.cfg.StaticDir = t.TempDir()
@@ -33,8 +34,8 @@ func TestStaticAssetsNoCache(t *testing.T) {
 		if got := rec.Header().Get("Cache-Control"); got != "no-cache" {
 			t.Fatalf("%s Cache-Control = %q, want no-cache", name, got)
 		}
-		if rec.Header().Get("Last-Modified") == "" {
-			t.Fatalf("%s lost Last-Modified (revalidation anchor)", name)
+		if rec.Header().Get("Last-Modified") == "" && rec.Header().Get("ETag") == "" {
+			t.Fatalf("%s has no revalidation anchor", name)
 		}
 	}
 
@@ -49,5 +50,26 @@ func TestStaticAssetsNoCache(t *testing.T) {
 	}
 	if body := rec.Body.String(); body != "<html></html>" {
 		t.Fatalf("product.html body = %q", body)
+	}
+}
+
+// The admin editor and widget runtime are one versioned contract. A binary
+// update must therefore replace both even when the external static directory
+// still contains files from an older installation.
+func TestBinaryServesEmbeddedWidgetBeforeStaleStaticDir(t *testing.T) {
+	s := newAuthTestServer(t)
+	s.cfg.StaticDir = t.TempDir()
+	if err := os.WriteFile(filepath.Join(s.cfg.StaticDir, "reviews-widget.js"), []byte("/* stale widget */"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := httptest.NewRecorder()
+	s.handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/reviews-widget.js", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("widget status = %d", rec.Code)
+	}
+	body := rec.Body.String()
+	if body == "/* stale widget */" || !strings.Contains(body, "ReviewsWidget") {
+		t.Fatalf("binary served stale external widget: %q", body)
 	}
 }

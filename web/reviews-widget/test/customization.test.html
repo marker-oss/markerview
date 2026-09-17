@@ -12,7 +12,7 @@
   const review = {
     marketplace: 'wb', externalReviewId: 'customization', rating: 5,
     authorName: 'Анна', text: 'Удобная покупка', createdAt: '2026-01-01T12:00:00Z',
-    media: [{ kind: 'video', url: '../assets/demo-review-1.mp4', previewUrl: '../assets/review-video.svg', duration: 24 }],
+    media: [{ kind: 'video', url: 'data:video/mp4;base64,AA==', previewUrl: '../assets/media-placeholder.svg', duration: 24 }],
     answer: { text: 'Спасибо за отзыв', kind: 'seller' },
   };
   function assert(condition, message) {
@@ -142,7 +142,7 @@
   });
   check('wall video without poster remains visible and opens playback', () => {
     const root = mount({ layout: { mode: 'wall' } }, {
-      reviews: [{ ...review, media: [{ kind: 'video', url: '../assets/demo-review-1.mp4' }] }],
+      reviews: [{ ...review, media: [{ kind: 'video', url: 'data:video/mp4;base64,AA==' }] }],
     });
     const tile = root.querySelector('.rw-wall-tile');
     assert(tile.getBoundingClientRect().height >= 44, 'posterless video tile collapsed');
