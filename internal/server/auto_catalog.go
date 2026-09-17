@@ -13,11 +13,12 @@ func (s *Server) autoRefreshCatalogOnce(ctx context.Context) bool {
 	if sitemapURL == "" {
 		return false
 	}
-	if !s.tryStartSiteLinksRefresh() {
+	tenantID := store.TenantIDFromCtx(ctx)
+	if !s.tryStartSiteLinksRefresh(tenantID) {
 		return false
 	}
 	s.logger.Info("catalog auto-refresh started", "sitemap", sitemapURL)
-	go s.runSiteLinksRefresh(store.TenantIDFromCtx(ctx), sitemapURL, false)
+	go s.runSiteLinksRefresh(tenantID, sitemapURL, false)
 	return true
 }
 

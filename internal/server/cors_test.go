@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -80,6 +82,43 @@ func TestCORSSkipsAdminRoutes(t *testing.T) {
 	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "" {
 		t.Fatalf("admin Access-Control-Allow-Origin = %q, want empty (admin is same-origin)", got)
 	}
+}
+
+func TestCORSAllowsAnonymousSharedWidgetAssetsOnly(t *testing.T) {
+	s := newAuthTestServer(t)
+	s.cfg.StaticDir = t.TempDir()
+	if err := os.WriteFile(filepath.Join(s.cfg.StaticDir, "reviews-widget.css"), []byte("body{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(s.cfg.StaticDir, "assets", "fonts"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(s.cfg.StaticDir, "assets", "fonts", "widget.woff2"), []byte("font"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h := s.handler()
+	check := func(method, path string, wantWildcard bool) {
+		t.Helper()
+		req := httptest.NewRequest(method, path, nil)
+		req.Header.Set("Origin", "https://unconfigured.example")
+		if method == http.MethodOptions {
+			req.Header.Set("Access-Control-Request-Method", http.MethodGet)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if got := rec.Header().Get("Access-Control-Allow-Origin"); (got == "*") != wantWildcard {
+			t.Fatalf("%s %s Allow-Origin = %q, wildcard want %v", method, path, got, wantWildcard)
+		}
+		if vary := rec.Header().Values("Vary"); len(vary) == 0 || !strings.Contains(strings.Join(vary, ","), "Origin") {
+			t.Fatalf("%s %s Vary = %q, want Origin", method, path, vary)
+		}
+	}
+	check(http.MethodGet, "/reviews-widget.css", true)
+	check(http.MethodHead, "/assets/fonts/widget.woff2", true)
+	check(http.MethodOptions, "/reviews-widget.js", true)
+	check(http.MethodGet, "/api/reviews", false)
+	check(http.MethodGet, "/reviews-data/index.json", false)
+	check(http.MethodGet, "/demo.html", false)
 }
 
 func TestCORSAllowsAdminConfiguredShopOrigin(t *testing.T) {

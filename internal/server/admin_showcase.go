@@ -47,7 +47,7 @@ func (s *Server) handleShowcase(w http.ResponseWriter, r *http.Request) {
 	marketplacePolicy := s.activeMarketplacePolicy(r.Context(), "homepage")
 	mapper := reviewjson.Mapper{
 		ProductURLTemplate: s.cfg.ProductURLTemplate,
-		ProductLinks:       s.productLinks(),
+		ProductLinks:       s.productLinks(r.Context()),
 		MarketplacePolicy:  marketplacePolicy,
 	}
 	items := make([]reviewjson.Review, 0, len(reviews))

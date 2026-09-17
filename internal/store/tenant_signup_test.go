@@ -77,6 +77,10 @@ func TestCreateTenantWithAdmin(t *testing.T) {
 	if admin.TenantID != result.Tenant.ID {
 		t.Fatalf("admin tenant = %d, want %d", admin.TenantID, result.Tenant.ID)
 	}
+	shopOrigin, err := s.GetAppSetting(WithTenant(ctx, result.Tenant.ID), SettingShopOrigin)
+	if err != nil || shopOrigin != "https://shop1.example" {
+		t.Fatalf("shop origin setting = %q err=%v", shopOrigin, err)
+	}
 
 	// Duplicate login fails the transaction; no tenant row leaks.
 	if _, err := s.CreateTenantWithAdmin(ctx, "seller1", "hash-2", "https://shop2.example"); err == nil {

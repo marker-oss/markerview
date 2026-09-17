@@ -10,6 +10,11 @@ import (
 	"gorm.io/gorm"
 )
 
+var (
+	ErrSignupClosed     = errors.New("signup closed")
+	ErrTenantCapReached = errors.New("tenant capacity reached")
+)
+
 // Tenant is one seller shop on a shared instance (SaaS) — or the single
 // implicit tenant (ID 1) in open-source single-tenant mode.
 type Tenant struct {
@@ -97,26 +102,44 @@ type TenantWithAdmin struct {
 }
 
 // CreateTenantWithAdmin registers a tenant and its first admin in one
-// transaction. The admin login is globally unique; the tenant starts on a
-// 14-day trial.
+// transaction using the self-hosted default 14-day trial.
 func (s *Store) CreateTenantWithAdmin(ctx context.Context, login, passwordHash, shopOrigin string) (TenantWithAdmin, error) {
+	return s.CreateTenantWithAdminFor(ctx, login, passwordHash, shopOrigin, 14*24*time.Hour, nil)
+}
+
+// TenantSignupAdmission runs inside the tenant-creation transaction. A cloud
+// overlay can use it to enforce registration state and capacity atomically.
+type TenantSignupAdmission func(*gorm.DB) error
+
+func (s *Store) CreateTenantWithAdminFor(ctx context.Context, login, passwordHash, shopOrigin string, trialDuration time.Duration, admission TenantSignupAdmission) (TenantWithAdmin, error) {
 	key := make([]byte, 32)
 	if _, err := rand.Read(key); err != nil {
 		return TenantWithAdmin{}, err
 	}
+	if trialDuration <= 0 {
+		trialDuration = 14 * 24 * time.Hour
+	}
 	var result TenantWithAdmin
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if admission != nil {
+			if err := admission(tx); err != nil {
+				return err
+			}
+		}
 		tenant := Tenant{
 			Slug:        login,
 			PublicKey:   hex.EncodeToString(key),
 			ShopOrigin:  shopOrigin,
-			TrialEndsAt: time.Now().UTC().Add(14 * 24 * time.Hour),
+			TrialEndsAt: time.Now().UTC().Add(trialDuration),
 		}
 		if err := tx.Create(&tenant).Error; err != nil {
 			return err
 		}
 		admin := AdminUser{TenantID: tenant.ID, Login: login, PasswordHash: passwordHash}
 		if err := tx.Create(&admin).Error; err != nil {
+			return err
+		}
+		if err := tx.Create(&AppSetting{TenantID: tenant.ID, Key: SettingShopOrigin, Value: shopOrigin}).Error; err != nil {
 			return err
 		}
 		result = TenantWithAdmin{Tenant: tenant, AdminID: admin.ID}

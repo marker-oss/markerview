@@ -28,6 +28,9 @@ func requireCSRF(next http.Handler) http.Handler {
 	})
 }
 
+// RequireCSRF protects state-changing routes registered by private overlays.
+func RequireCSRF(next http.Handler) http.Handler { return requireCSRF(next) }
+
 // handleCSRFToken issues a CSRF token cookie and returns the value so the SPA
 // can echo it back in the X-CSRF-Token header.
 func (s *Server) handleCSRFToken(w http.ResponseWriter, _ *http.Request) {

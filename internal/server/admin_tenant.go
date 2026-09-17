@@ -20,10 +20,15 @@ func (s *Server) handleTenant(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	dataScope := ""
+	if store.StrictTenantMode() {
+		dataScope = tenant.PublicKey
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"id":          tenant.ID,
 		"slug":        tenant.Slug,
 		"publicKey":   tenant.PublicKey,
+		"dataScope":   dataScope,
 		"plan":        tenant.Plan,
 		"status":      tenant.Status,
 		"paidUntil":   tenant.PaidUntil,

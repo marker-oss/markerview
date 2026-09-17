@@ -3,10 +3,13 @@ package store
 import "time"
 
 type AdminUser struct {
-	ID           uint      `gorm:"primaryKey"`
-	TenantID     uint      `gorm:"not null;default:1;index"`
-	Login        string    `gorm:"size:128;not null;uniqueIndex"`
-	PasswordHash string    `gorm:"not null"`
+	ID           uint   `gorm:"primaryKey"`
+	TenantID     uint   `gorm:"not null;default:1;index"`
+	Login        string `gorm:"size:128;not null;uniqueIndex"`
+	PasswordHash string `gorm:"not null"`
+	// EmailVerifiedAt is nil for hosted self-service accounts until the
+	// verification link is consumed. Setup/owner accounts remain nil.
+	EmailVerifiedAt *time.Time
 	// Role separates the SaaS operator from tenant admins: "owner" bypasses
 	// the tenant scope for operator routes (used by the closed-source
 	// overlay); "admin" is the normal tenant-scoped user. Default keeps

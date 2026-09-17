@@ -19,6 +19,10 @@ import (
 	"reviews/internal/config"
 	"reviews/internal/mediaproxy"
 	"reviews/internal/reviewjson"
+	"reviews/internal/site"
+
+	"gorm.io/gorm"
+
 	"reviews/internal/store"
 )
 
@@ -70,11 +74,23 @@ type Config struct {
 	// can reach the store and logger. nil in the open-source build.
 	ExtraAdminRoutes func(s *Server) *http.ServeMux
 	// ExtraPublicRoutes lets the overlay register public routes (payment
-	// webhooks that must not require a session). Mounted at the root mux
-	// before the static file server.
+	// webhooks that must not require a session). Mounted at the root mux.
 	ExtraPublicRoutes func(s *Server) *http.ServeMux
+	// ExtraAuthRoutes exposes public password/email auth endpoints below /auth/.
+	ExtraAuthRoutes func(s *Server) *http.ServeMux
+	// OnSignup runs after a tenant/admin transaction and before any session is
+	// created. Cloud uses it to issue and send account verification mail.
+	OnSignup func(context.Context, *store.Store, uint, string) error
+	// RequireLoginVerification gates login for selected users (cloud tenant
+	// admins). A nil callback preserves public/self-hosted behavior.
+	RequireLoginVerification func(store.AdminUser) bool
+	// NormalizeLogin canonicalizes the hosted account identifier.
+	NormalizeLogin func(string) (string, error)
+	// SignupEnabled reports whether self-service registration is open.
+	SignupEnabled func(context.Context) (bool, error)
+	// AdmitSignup runs inside tenant creation for hosted admission control.
+	AdmitSignup func(*gorm.DB) error
 }
-
 type Server struct {
 	store         *store.Store
 	cfg           Config
@@ -82,13 +98,16 @@ type Server struct {
 	server        *http.Server
 	submissions   *submissionLimiter
 	tenantLimiter *tenantRateLimiter
-	// at runtime while request handlers read it.
-	linksMu sync.RWMutex
+	// linksMu guards per-tenant article→URL maps refreshed at runtime.
+	linksMu              sync.RWMutex
+	productLinksByTenant map[uint]map[string]string
 
-	// siteLinksMu guards siteLinksJob, the status snapshot of the background
-	// catalog refresh (single job slot).
-	siteLinksMu  sync.Mutex
-	siteLinksJob siteLinksStatus
+	// siteLinksMu guards per-tenant catalog refresh status/job slots.
+	siteLinksMu   sync.Mutex
+	siteLinksJobs map[uint]siteLinksStatus
+	// exportMu serializes catalog and static export replacements. A single lock
+	// is sufficient for infrequent admin/background writes.
+	exportMu sync.Mutex
 
 	// originsMu guards shopOrigins — the admin-configured CORS origins merged
 	// into the env whitelist; rebuilt whenever the shop_origin setting changes.
@@ -118,11 +137,26 @@ func (s *Server) Store() *store.Store {
 	return s.store
 }
 
-// productLinks returns the current article→URL map under a read lock.
-func (s *Server) productLinks() map[string]string {
+// productLinks returns the current tenant's article→URL map under a read lock.
+func (s *Server) productLinks(ctx context.Context) map[string]string {
+	tenantID := store.TenantIDFromCtx(ctx)
 	s.linksMu.RLock()
-	defer s.linksMu.RUnlock()
-	return s.cfg.ProductLinks
+	links := s.productLinksByTenant[tenantID]
+	s.linksMu.RUnlock()
+	if links != nil {
+		return links
+	}
+	if !store.StrictTenantMode() {
+		return s.cfg.ProductLinks
+	}
+	persisted, err := s.productCatalogLinks(ctx)
+	if err != nil {
+		s.logger.Error("load tenant product links", "tenant", tenantID, "error", err)
+		return nil
+	}
+	links = site.ProductLinkMap(persisted)
+	s.setProductLinks(ctx, links)
+	return links
 }
 
 // SetTenantExportScope installs the per-tenant static export resolver (SaaS).
@@ -149,11 +183,17 @@ func (s *Server) HandlerForTest() http.Handler {
 	return s.handler()
 }
 
-// setProductLinks atomically swaps the in-memory article→URL map.
-func (s *Server) setProductLinks(links map[string]string) {
+// setProductLinks atomically swaps the tenant's in-memory article→URL map.
+func (s *Server) setProductLinks(ctx context.Context, links map[string]string) {
 	s.linksMu.Lock()
 	defer s.linksMu.Unlock()
-	s.cfg.ProductLinks = links
+	if s.productLinksByTenant == nil {
+		s.productLinksByTenant = make(map[uint]map[string]string)
+	}
+	s.productLinksByTenant[store.TenantIDFromCtx(ctx)] = links
+	if !store.StrictTenantMode() {
+		s.cfg.ProductLinks = links
+	}
 }
 
 func New(store *store.Store, cfg Config, logger *slog.Logger) *Server {
@@ -167,9 +207,11 @@ func New(store *store.Store, cfg Config, logger *slog.Logger) *Server {
 		cfg.SessionTTL = 24 * time.Hour
 	}
 	return &Server{
-		store:  store,
-		cfg:    cfg,
-		logger: logger,
+		store:                store,
+		cfg:                  cfg,
+		logger:               logger,
+		productLinksByTenant: make(map[uint]map[string]string),
+		siteLinksJobs:        make(map[uint]siteLinksStatus),
 	}
 }
 
@@ -227,11 +269,34 @@ func (s *Server) tenantScope(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		// Admin routes authenticate by session (requireSession stamps the
-		// tenant from the session row); health probes and static assets are
-		// tenant-less by design; only public data routes need public_key.
+		// tenant from the session row). A tenant-scoped static export carries
+		// its public key as the first path segment instead of a query parameter.
 		admin := strings.HasPrefix(r.URL.Path, "/admin/")
-		tenantless := r.URL.Path == "/healthz" || !strings.HasPrefix(r.URL.Path, "/api/")
-		if key := r.URL.Query().Get("public_key"); key != "" {
+		if !admin && r.Header.Get("Origin") != "" {
+			w.Header().Set("Vary", "Origin")
+		}
+		staticExport := r.URL.Path == "/reviews-data" || strings.HasPrefix(r.URL.Path, "/reviews-data/")
+		staticKey := ""
+		if store.StrictTenantMode() && staticExport {
+			rest := strings.TrimPrefix(r.URL.Path, "/reviews-data/")
+			staticKey, rest, _ = strings.Cut(rest, "/")
+			// Only files below a tenant key are public. Rejecting roots and
+			// trailing-slash paths also prevents FileServer directory listings.
+			if staticKey == "" || rest == "" || strings.HasSuffix(r.URL.Path, "/") {
+				writeError(w, http.StatusForbidden, errors.New("tenant-scoped data file required"))
+				return
+			}
+			if queryKey := r.URL.Query().Get("public_key"); queryKey != "" && queryKey != staticKey {
+				writeError(w, http.StatusForbidden, errors.New("public key does not match data path"))
+				return
+			}
+		}
+		tenantless := r.URL.Path == "/healthz" || (!strings.HasPrefix(r.URL.Path, "/api/") && !staticExport)
+		key := r.URL.Query().Get("public_key")
+		if staticKey != "" {
+			key = staticKey
+		}
+		if key != "" {
 			tenant, err := s.store.TenantByPublicKey(ctx, key)
 			if err != nil {
 				writeError(w, http.StatusForbidden, errors.New("unknown public key"))
@@ -246,17 +311,9 @@ func (s *Server) tenantScope(next http.Handler) http.Handler {
 					writeError(w, http.StatusForbidden, errors.New("origin not allowed for this public key"))
 					return
 				}
-				// Same-request CORS allowlist: the cors middleware (running
-				// inside this handler) must echo the tenant's own origin, not
-				// the global AppSetting/env list — otherwise a SaaS widget's
-				// preflight from tenant B's shop fails even though the guard
-				// passed.
 				ctx = context.WithValue(ctx, tenantOriginsKey, origins)
 			}
 			ctx = store.WithTenant(ctx, tenant.ID)
-			// Billing gate: a paused tenant (trial expired / unpaid) keeps admin
-			// access but serves widget data 402 so the seller can still log in
-			// and pay.
 			if tenant.Status == "paused" {
 				writeError(w, http.StatusPaymentRequired, errors.New("подписка приостановлена"))
 				return
@@ -303,10 +360,17 @@ func (s *Server) Run(ctx context.Context) error {
 func (s *Server) adminMux() *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /admin/api/setup-status", s.handleSetupStatus)
-	mux.HandleFunc("POST /admin/api/setup", s.handleSetup)
 	mux.HandleFunc("POST /admin/api/login", s.handleLogin)
+	mux.HandleFunc("POST /admin/api/setup", s.handleSetup)
 	mux.HandleFunc("POST /admin/api/signup", s.handleSignup)
-
+	if s.cfg.ExtraAuthRoutes != nil {
+		inner := s.cfg.ExtraAuthRoutes(s)
+		mux.Handle("/admin/auth/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			r2 := r.Clone(r.Context())
+			r2.URL.Path = "/auth" + strings.TrimPrefix(r.URL.Path, "/admin/auth")
+			http.StripPrefix("/auth", inner).ServeHTTP(w, r2)
+		}))
+	}
 	protected := http.NewServeMux()
 	protected.HandleFunc("GET /admin/api/me", s.handleMe)
 	protected.HandleFunc("GET /admin/api/csrf", s.handleCSRFToken)
@@ -389,7 +453,7 @@ func (s *Server) handleReviews(w http.ResponseWriter, r *http.Request) {
 	}
 	mapper := reviewjson.Mapper{
 		ProductURLTemplate: s.cfg.ProductURLTemplate,
-		ProductLinks:       s.productLinks(),
+		ProductLinks:       s.productLinks(r.Context()),
 		MarketplacePolicy:  marketplacePolicy,
 	}
 	items := make([]reviewjson.Review, 0, len(reviews))

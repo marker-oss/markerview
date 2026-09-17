@@ -83,6 +83,33 @@ func TestSetupThenLoginFlow(t *testing.T) {
 	}
 }
 
+func TestStrictTenantModeAdvertisesSignupAndRejectsSetup(t *testing.T) {
+	restore := store.SetStrictTenantModeForTest(true)
+	defer restore()
+	s := newAuthTestServer(t)
+	mux := s.adminMux()
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/admin/api/setup-status", nil))
+	if rec.Code != http.StatusOK || rec.Body.String() != "{\"needs_setup\":false,\"signup_enabled\":true}\n" {
+		t.Fatalf("strict setup status = %d %s", rec.Code, rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/admin/api/setup",
+		strings.NewReader(`{"login":"admin","password":"password1"}`)))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("strict setup = %d, want 404", rec.Code)
+	}
+
+	restore()
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/admin/api/setup-status", nil))
+	if rec.Code != http.StatusOK || rec.Body.String() != "{\"needs_setup\":true,\"signup_enabled\":false}\n" {
+		t.Fatalf("compat setup status = %d %s", rec.Code, rec.Body.String())
+	}
+}
+
 func firstCookie(rec *httptest.ResponseRecorder, name string) *http.Cookie {
 	for _, cookie := range rec.Result().Cookies() {
 		if cookie.Name == name {

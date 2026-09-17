@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -109,6 +111,47 @@ func TestStrictModeRequiresPublicKey(t *testing.T) {
 	s.handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/admin/api/setup-status", nil))
 	if rec.Code == http.StatusForbidden {
 		t.Fatal("admin route must not require public_key")
+	}
+}
+
+func TestStrictStaticExportRequiresMatchingPathKey(t *testing.T) {
+	s := newAuthTestServer(t)
+	tenant, err := s.store.TenantByID(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := s.store.CreateTenant(context.Background(), "other-static", "https://other.example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(s.cfg.StaticDir, "reviews-data", tenant.PublicKey), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(s.cfg.StaticDir, "reviews-data", tenant.PublicKey, "index.json"), []byte(`{"tenant":"a"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	restore := store.SetStrictTenantModeForTest(true)
+	defer restore()
+	h := s.handler()
+	get := func(path string) int {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		return rec.Code
+	}
+	if got := get("/reviews-data/" + tenant.PublicKey + "/index.json?public_key=" + tenant.PublicKey); got != http.StatusOK {
+		t.Fatalf("matching keyed export status = %d, want 200", got)
+	}
+	if got := get("/reviews-data/" + tenant.PublicKey + "/index.json?public_key=" + other.PublicKey); got != http.StatusForbidden {
+		t.Fatalf("mismatched path/query status = %d, want 403", got)
+	}
+	for _, path := range []string{
+		"/reviews-data?public_key=" + tenant.PublicKey,
+		"/reviews-data/?public_key=" + tenant.PublicKey,
+		"/reviews-data/" + tenant.PublicKey + "/",
+	} {
+		if got := get(path); got != http.StatusForbidden {
+			t.Fatalf("directory path %q status = %d, want 403", path, got)
+		}
 	}
 }
 

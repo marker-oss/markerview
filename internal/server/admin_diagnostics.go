@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -83,7 +84,7 @@ func (s *Server) handleDiagnostics(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Catalog coverage
-	links, _ := s.productCatalogLinks()
+	links, _ := s.productCatalogLinks(ctx)
 	if len(links) == 0 {
 		checks = append(checks, DiagItem{
 			ID: "catalog", Level: "warn",
@@ -189,7 +190,7 @@ func (s *Server) handleDiagnosticsProbe(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if strings.TrimSpace(req.ProductURL) != "" {
-		checks = append(checks, s.probeProductURL(req.ProductURL))
+		checks = append(checks, s.probeProductURL(ctx, req.ProductURL))
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"checks": checks})
@@ -199,8 +200,8 @@ func (s *Server) handleDiagnosticsProbe(w http.ResponseWriter, r *http.Request) 
 // product-link map the widget uses. It never performs a "snippet present"
 // check — that cannot be done reliably server-side when the snippet is
 // injected by Tag Manager (documented limitation, surfaced in the UI).
-func (s *Server) probeProductURL(productURL string) DiagItem {
-	article := s.resolveArticleFromURL(productURL)
+func (s *Server) probeProductURL(ctx context.Context, productURL string) DiagItem {
+	article := s.resolveArticleFromURL(ctx, productURL)
 	if article == "" {
 		return DiagItem{
 			ID: "article-resolve", Level: "warn",
@@ -216,12 +217,10 @@ func (s *Server) probeProductURL(productURL string) DiagItem {
 	}
 }
 
-// resolveArticleFromURL inverts the in-memory article→URL map (s.productLinks(),
-// which is keyed by seller article — verified in server.go / site.ProductLinkMap)
-// to find the article whose product page matches productURL.
-func (s *Server) resolveArticleFromURL(productURL string) string {
+// resolveArticleFromURL inverts the tenant's in-memory article→URL map.
+func (s *Server) resolveArticleFromURL(ctx context.Context, productURL string) string {
 	target := strings.TrimRight(strings.TrimSpace(productURL), "/")
-	for article, u := range s.productLinks() {
+	for article, u := range s.productLinks(ctx) {
 		if strings.TrimRight(u, "/") == target {
 			return article
 		}
