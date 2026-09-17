@@ -188,6 +188,9 @@ func replaceExportDir(dir string, write func(string) error) error {
 	if err := write(tmp); err != nil {
 		return err
 	}
+	if err := os.Chmod(tmp, 0o755); err != nil {
+		return err
+	}
 	backup := dir + ".old"
 	_ = os.RemoveAll(backup)
 	if err := os.Rename(dir, backup); err != nil && !os.IsNotExist(err) {

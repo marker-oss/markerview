@@ -40,6 +40,13 @@ func TestRunAutoPublishOncePublishesWhenDirty(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(s.cfg.StaticDir, "reviews-data", "index.json")); err != nil {
 		t.Fatalf("export not written: %v", err)
 	}
+	info, err := os.Stat(filepath.Join(s.cfg.StaticDir, "reviews-data"))
+	if err != nil {
+		t.Fatalf("stat export directory: %v", err)
+	}
+	if info.Mode().Perm()&0o055 != 0o055 {
+		t.Fatalf("export directory mode = %o, separate web server cannot traverse it", info.Mode().Perm())
+	}
 	if _, dirty, err := s.store.ExportDirtySince(context.Background()); err != nil || dirty {
 		t.Fatalf("export still dirty after publish (dirty=%v err=%v)", dirty, err)
 	}
