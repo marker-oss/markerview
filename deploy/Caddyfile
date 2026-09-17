@@ -42,8 +42,6 @@
 		Cache-Control "public, max-age=300"
 	}
 
-	@assets path /loader.js /reviews-widget.js /reviews-widget.css /assets/*
-	header @assets Cache-Control "no-cache"
 
 	# Admin and widget runtime are embedded in the same binary and must update
 	# atomically; reviews-data remains on disk as tenant-generated content.

@@ -72,8 +72,6 @@ $public_domain {
 		Cache-Control "public, max-age=300"
 	}
 
-	@assets path /loader.js /reviews-widget.js /reviews-widget.css /assets/*
-	header @assets Cache-Control "no-cache"
 
 	# Keep the admin editor and widget runtime on the same embedded version.
 	@backend path /api /api/* /admin /admin/* /healthz /user-media /user-media/* /loader.js /reviews-widget.js /reviews-widget.css /assets/*
