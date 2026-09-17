@@ -162,6 +162,8 @@ export default function App() {
   const [submitting, setSubmitting] = useState(false)
   const [signupEnabled, setSignupEnabled] = useState(false)
   const [verificationRequired, setVerificationRequired] = useState(false)
+  const [mailDelayed, setMailDelayed] = useState(false)
+  const [resent, setResent] = useState(false)
   const [error, setError] = useState('')
   const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null)
   const [dismissedVersion, setDismissedVersion] = useState(() => localStorage.getItem(DISMISSED_KEY) ?? '')
@@ -235,6 +237,7 @@ export default function App() {
         const result = await postAuth('/admin/api/signup', { login, password, shopOrigin })
         if (result && typeof result === 'object' && 'status' in result && result.status === 'verification_required') {
           setVerificationRequired(true)
+          setMailDelayed('mailDelayed' in result && result.mailDelayed === true)
           setPassword('')
           return
         }
@@ -255,9 +258,14 @@ export default function App() {
 
   async function resendVerification() {
     setError('')
+    setResent(false)
+    // The signup-time delivery banner is history once a resend is attempted:
+    // its outcome is reported below, and two errors for one failure confuse.
+    setMailDelayed(false)
     setSubmitting(true)
     try {
       await postAuth('/admin/auth/resend-verification', { email: login })
+      setResent(true)
     } catch (err) {
       setError(err instanceof Error ? authError(err.message) : 'Запрос не выполнен')
     } finally {
@@ -309,13 +317,21 @@ export default function App() {
               <div>
                 <p className="eyebrow">Регистрация</p>
                 <h1 style={{ marginTop: 4 }}>Проверьте почту</h1>
-                <p className="sub" style={{ marginTop: 8 }}>
-                  Мы отправили письмо со ссылкой для подтверждения на <b>{login}</b>.
-                </p>
+                {mailDelayed ? (
+                  <p className="error" role="alert" style={{ marginTop: 8 }}>
+                    Аккаунт создан, но письмо отправить не удалось. Нажмите «Отправить письмо ещё раз».
+                  </p>
+                ) : (
+                  <p className="sub" style={{ marginTop: 8 }}>
+                    Мы отправили письмо со ссылкой для подтверждения на <b>{login}</b>. Пробный период начнётся после
+                    подтверждения.
+                  </p>
+                )}
               </div>
               <button type="button" onClick={resendVerification} disabled={submitting}>
                 {submitting ? 'Подождите…' : 'Отправить письмо ещё раз'}
               </button>
+              {resent && !error && <p className="sub" role="status">Письмо отправлено повторно.</p>}
               {error && <p className="error" role="alert">{error}</p>}
               <p className="sub">
                 <a href="#/login" onClick={() => setVerificationRequired(false)}>
