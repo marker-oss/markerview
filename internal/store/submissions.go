@@ -19,6 +19,7 @@ type SiteReviewInput struct {
 	ExternalReviewID string
 	SellerArticle    string
 	Rating           int
+	Title            string
 	AuthorName       string
 	AuthorEmail      string
 	Text             string
@@ -106,6 +107,7 @@ func (s *Store) CreateSiteReview(ctx context.Context, input SiteReviewInput) (Re
 			SellerArticle:      input.SellerArticle,
 			ReviewerIdentityID: &identity.ID,
 			Rating:             &rating,
+			Title:              strings.TrimSpace(input.Title),
 			AuthorName:         strings.TrimSpace(input.AuthorName),
 			Text:               strings.TrimSpace(input.Text),
 			Pros:               strings.TrimSpace(input.Pros),

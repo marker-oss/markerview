@@ -179,12 +179,16 @@ type goodsFeedbackIdentifiers struct {
 	ShopSku   string `json:"shopSku"`
 	MarketSku int64  `json:"marketSku"`
 	ModelID   int64  `json:"modelId"`
+	// modelName rides the identifiers block in some YM responses; parsed
+	// defensively ("" = absent, panel falls back to seller URL only).
+	ModelName string `json:"modelName"`
 }
 
 type goodsFeedbackDescription struct {
 	Advantages    string `json:"advantages"`
 	Disadvantages string `json:"disadvantages"`
 	Comment       string `json:"comment"`
+	Title         string `json:"title"`
 }
 
 type goodsFeedbackMedia struct {
@@ -192,8 +196,12 @@ type goodsFeedbackMedia struct {
 	Videos []string `json:"videos"`
 }
 
+// YM statistics: rating plus a boolean "recommend" flag per the Partner API.
+// price is parsed defensively ("1 799 ₽" string, "" = absent).
 type goodsFeedbackStatistics struct {
-	Rating int `json:"rating"`
+	Rating    int    `json:"rating"`
+	Recommend *bool  `json:"recommend,omitempty"`
+	Price     string `json:"price"`
 }
 
 func (f goodsFeedback) toReview() (marketplace.Review, error) {
@@ -211,6 +219,11 @@ func (f goodsFeedback) toReview() (marketplace.Review, error) {
 	if f.Statistics.Rating > 0 {
 		value := f.Statistics.Rating
 		rating = &value
+	}
+
+	var recommend bool
+	if f.Statistics.Recommend != nil {
+		recommend = *f.Statistics.Recommend
 	}
 
 	media := make([]marketplace.Media, 0, len(f.Media.Photos)+len(f.Media.Videos))
@@ -241,12 +254,16 @@ func (f goodsFeedback) toReview() (marketplace.Review, error) {
 		ExternalProductID: f.externalProductID(),
 		SellerArticle:     f.Identifiers.OfferID,
 		Rating:            rating,
+		Title:             f.Description.Title,
 		AuthorName:        f.Author,
 		Text:              f.Description.Comment,
 		Pros:              f.Description.Advantages,
 		Cons:              f.Description.Disadvantages,
 		CreatedAtMP:       createdAt,
 		Media:             media,
+		ProductName:       f.Identifiers.ModelName,
+		ProductPrice:      f.Statistics.Price,
+		Recommend:         recommend,
 		Raw:               raw,
 	}, nil
 }

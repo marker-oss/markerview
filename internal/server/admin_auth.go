@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"reviews/internal/auth"
+	"reviews/internal/store"
 )
 
 type credentials struct {
@@ -27,6 +28,10 @@ func (c credentials) validate() error {
 
 // handleSetup creates the first admin user. It only works while no admin exists.
 func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
+	if store.StrictTenantMode() {
+		writeError(w, http.StatusNotFound, errors.New("setup is not enabled"))
+		return
+	}
 	n, err := s.store.CountAdminUsers(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
@@ -67,7 +72,14 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := s.store.GetAdminUserByLogin(r.Context(), strings.TrimSpace(creds.Login))
+	login := strings.TrimSpace(creds.Login)
+	if s.cfg.NormalizeLogin != nil {
+		canonical, err := s.cfg.NormalizeLogin(login)
+		if err == nil {
+			login = canonical
+		}
+	}
+	user, err := s.store.GetAdminUserByLogin(r.Context(), login)
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, errors.New("invalid login or password"))
 		return
@@ -75,6 +87,10 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	ok, err := auth.VerifyPassword(user.PasswordHash, creds.Password)
 	if err != nil || !ok {
 		writeError(w, http.StatusUnauthorized, errors.New("invalid login or password"))
+		return
+	}
+	if store.StrictTenantMode() && s.cfg.RequireLoginVerification != nil && s.cfg.RequireLoginVerification(user) {
+		writeError(w, http.StatusUnauthorized, errors.New("email verification required"))
 		return
 	}
 
@@ -116,12 +132,27 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"user_id": id, "role": user.Role})
 }
 
-// handleSetupStatus tells the SPA whether to show setup or login.
+// handleSetupStatus tells the SPA which public authentication modes are
+// available. Strict SaaS always starts at login/signup, even with an empty DB.
 func (s *Server) handleSetupStatus(w http.ResponseWriter, r *http.Request) {
-	n, err := s.store.CountAdminUsers(r.Context())
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
+	strict := store.StrictTenantMode()
+	needsSetup := false
+	if !strict {
+		n, err := s.store.CountAdminUsers(r.Context())
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		needsSetup = n == 0
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"needs_setup": n == 0})
+	signupEnabled := strict
+	if s.cfg.SignupEnabled != nil {
+		var err error
+		signupEnabled, err = s.cfg.SignupEnabled(r.Context())
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"needs_setup": needsSetup, "signup_enabled": signupEnabled})
 }

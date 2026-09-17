@@ -47,7 +47,7 @@ func (s *Server) handleShowcase(w http.ResponseWriter, r *http.Request) {
 	marketplacePolicy := s.activeMarketplacePolicy(r.Context(), "homepage")
 	mapper := reviewjson.Mapper{
 		ProductURLTemplate: s.cfg.ProductURLTemplate,
-		ProductLinks:       s.productLinks(),
+		ProductLinks:       s.productLinks(r.Context()),
 		MarketplacePolicy:  marketplacePolicy,
 	}
 	items := make([]reviewjson.Review, 0, len(reviews))
@@ -62,11 +62,30 @@ func (s *Server) handleShowcase(w http.ResponseWriter, r *http.Request) {
 		Reviews: items,
 		Count:   len(items),
 		Aggregate: reviewAggregateResponse{
-			TotalReviews:  aggregate.TotalReviews,
-			RatingCount:   aggregate.RatingCount,
-			AverageRating: aggregate.AverageRating,
+			TotalReviews:     aggregate.TotalReviews,
+			RatingCount:      aggregate.RatingCount,
+			AverageRating:    aggregate.AverageRating,
+			RecommendPercent: recommendPercent(items),
 		},
 	})
+}
+
+// recommendPercent is the share of rated reviews with rating >= 4, 0-100.
+func recommendPercent(reviews []reviewjson.Review) int {
+	ratingCount, recommended := 0, 0
+	for _, review := range reviews {
+		if review.Rating == nil {
+			continue
+		}
+		ratingCount++
+		if *review.Rating >= 4 {
+			recommended++
+		}
+	}
+	if ratingCount == 0 {
+		return 0
+	}
+	return recommended * 100 / ratingCount
 }
 
 type showcaseResponse struct {
@@ -76,9 +95,10 @@ type showcaseResponse struct {
 }
 
 type reviewAggregateResponse struct {
-	TotalReviews  int64   `json:"totalReviews"`
-	RatingCount   int64   `json:"ratingCount"`
-	AverageRating float64 `json:"averageRating"`
+	TotalReviews     int64   `json:"totalReviews"`
+	RatingCount      int64   `json:"ratingCount"`
+	AverageRating    float64 `json:"averageRating"`
+	RecommendPercent int     `json:"recommendPercent"`
 }
 
 func publicReviewAggregate(reviews []reviewjson.Review) reviewAggregateResponse {
@@ -106,10 +126,19 @@ func (s *Server) publicShowcaseAggregate(ctx context.Context, policy reviewjson.
 		if err != nil {
 			return reviewAggregateResponse{}, err
 		}
+		reviews, err := s.store.ListVisibleReviews(ctx)
+		if err != nil {
+			return reviewAggregateResponse{}, err
+		}
+		items := make([]reviewjson.Review, 0, len(reviews))
+		for _, rv := range reviews {
+			items = append(items, reviewjson.Review{Rating: rv.Rating})
+		}
 		return reviewAggregateResponse{
-			TotalReviews:  aggregate.TotalReviews,
-			RatingCount:   aggregate.RatingCount,
-			AverageRating: aggregate.AverageRating,
+			TotalReviews:     aggregate.TotalReviews,
+			RatingCount:      aggregate.RatingCount,
+			AverageRating:    aggregate.AverageRating,
+			RecommendPercent: recommendPercent(items),
 		}, nil
 	}
 	reviews, err := s.store.ListVisibleReviews(ctx)
@@ -124,5 +153,7 @@ func (s *Server) publicShowcaseAggregate(ctx context.Context, policy reviewjson.
 		}
 		items = append(items, mapper.ToReview(rv))
 	}
-	return publicReviewAggregate(items), nil
+	aggregate := publicReviewAggregate(items)
+	aggregate.RecommendPercent = recommendPercent(items)
+	return aggregate, nil
 }

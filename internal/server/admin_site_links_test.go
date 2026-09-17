@@ -1,7 +1,9 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -10,6 +12,10 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"reviews/internal/marketplace"
+	"reviews/internal/site"
+	"reviews/internal/store"
 )
 
 type refreshStatusPayload struct {
@@ -76,6 +82,109 @@ func TestRefreshSiteLinksStatusIdleInitially(t *testing.T) {
 		t.Fatalf("state = %q, want idle", status.State)
 	}
 }
+func TestTenantCatalogStateIsolatedAndRehydrates(t *testing.T) {
+	s := newAuthTestServer(t)
+	s.cfg.ProductLinksPath = filepath.Join(t.TempDir(), "product-links.json")
+	s.cfg.StaticDir = t.TempDir()
+	tenantA, err := s.store.TenantByID(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	tenantB, err := s.store.CreateTenant(context.Background(), "catalog-b", "https://b.example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	restore := store.SetStrictTenantModeForTest(true)
+	defer restore()
+
+	ctxA := store.WithTenant(context.Background(), tenantA.ID)
+	ctxB := store.WithTenant(context.Background(), tenantB.ID)
+	linksA := []site.ProductLink{{SellerArticle: "same", URL: "https://a.example/product"}}
+	rating := 5
+	for _, seed := range []struct {
+		ctx context.Context
+		id  string
+	}{{ctxA, "catalog-a-review"}, {ctxB, "catalog-b-review"}} {
+		if _, err := s.store.UpsertReview(seed.ctx, marketplace.Review{
+			Marketplace:       "wb",
+			ExternalReviewID:  seed.id,
+			ExternalProductID: "product",
+			SellerArticle:     "same",
+			Rating:            &rating,
+			Text:              seed.id,
+			CreatedAtMP:       time.Now().UTC(),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	linksB := []site.ProductLink{{SellerArticle: "same", URL: "https://b.example/product"}}
+	if _, _, err := s.regenerateSiteData(ctxA, linksA); err != nil {
+		t.Fatalf("regenerate tenant A: %v", err)
+	}
+	if _, _, err := s.regenerateSiteData(ctxB, linksB); err != nil {
+		t.Fatalf("regenerate tenant B: %v", err)
+	}
+	if got := s.productLinks(ctxA)["same"]; got != linksA[0].URL {
+		t.Fatalf("tenant A link = %q, want %q", got, linksA[0].URL)
+	}
+	if got := s.productLinks(ctxB)["same"]; got != linksB[0].URL {
+		t.Fatalf("tenant B link = %q, want %q", got, linksB[0].URL)
+	}
+
+	// A restarted server has empty memory and must hydrate the tenant's own
+	// persisted catalog before publishing.
+	restarted := New(s.store, s.cfg, s.logger)
+	if got := restarted.productLinks(ctxA)["same"]; got != linksA[0].URL {
+		t.Fatalf("tenant A restart link = %q, want %q", got, linksA[0].URL)
+	}
+	if got := restarted.productLinks(ctxB)["same"]; got != linksB[0].URL {
+		t.Fatalf("tenant B restart link = %q, want %q", got, linksB[0].URL)
+	}
+	if _, err := restarted.publishReviewsData(ctxA); err != nil {
+		t.Fatalf("publish tenant A after restart: %v", err)
+	}
+	if _, err := restarted.publishReviewsData(ctxB); err != nil {
+		t.Fatalf("publish tenant B after restart: %v", err)
+	}
+	for _, tc := range []struct {
+		tenant store.Tenant
+		url    string
+	}{{tenantA, linksA[0].URL}, {tenantB, linksB[0].URL}} {
+		path := filepath.Join(s.cfg.StaticDir, "reviews-data", tc.tenant.PublicKey, "by-article", "same.json")
+		body, err := os.ReadFile(path)
+		if err != nil || !strings.Contains(string(body), `"sellerProductUrl": "`+tc.url+`"`) {
+			t.Fatalf("tenant %d export %q: %s (%v)", tc.tenant.ID, path, body, err)
+		}
+	}
+	if !s.tryStartSiteLinksRefresh(tenantA.ID) || !s.tryStartSiteLinksRefresh(tenantB.ID) {
+		t.Fatal("different tenants must have independent refresh slots")
+	}
+	if s.tryStartSiteLinksRefresh(tenantA.ID) {
+		t.Fatal("same tenant must not claim a running refresh slot twice")
+	}
+}
+
+func TestStrictCatalogResolverFailureCannotWriteSharedData(t *testing.T) {
+	s := newAuthTestServer(t)
+	s.cfg.ProductLinksPath = filepath.Join(t.TempDir(), "product-links.json")
+	s.cfg.StaticDir = t.TempDir()
+	s.SetTenantExportScope(func(context.Context) (string, error) { return "", errors.New("scope unavailable") })
+	restore := store.SetStrictTenantModeForTest(true)
+	defer restore()
+	ctx := store.WithTenant(context.Background(), store.DefaultTenantID)
+	if _, _, err := s.regenerateSiteData(ctx, []site.ProductLink{{SellerArticle: "same", URL: "https://shop.example/product"}}); err == nil {
+		t.Fatal("regenerate succeeded with an erroring scope resolver")
+	}
+	if _, err := s.publishReviewsData(ctx); err == nil {
+		t.Fatal("publish succeeded with an erroring scope resolver")
+	}
+	if _, err := os.Stat(s.cfg.ProductLinksPath); !os.IsNotExist(err) {
+		t.Fatalf("shared catalog was written: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(s.cfg.StaticDir, "reviews-data", "index.json")); !os.IsNotExist(err) {
+		t.Fatalf("shared export was written: %v", err)
+	}
+}
 
 func TestRefreshSiteLinksRunsInBackgroundAndRegeneratesExport(t *testing.T) {
 	// Fake Kit shop: a sitemap pointing at one product page carrying "sku":"107".
@@ -122,8 +231,8 @@ func TestRefreshSiteLinksRunsInBackgroundAndRegeneratesExport(t *testing.T) {
 	}
 
 	// In-memory map was swapped.
-	if s.productLinks()["107"] == "" {
-		t.Fatalf("product links map missing article 107: %v", s.productLinks())
+	if s.productLinks(context.Background())["107"] == "" {
+		t.Fatalf("product links map missing article 107: %v", s.productLinks(context.Background()))
 	}
 
 	// The crawled list was persisted.

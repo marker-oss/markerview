@@ -28,26 +28,37 @@ type Mapper struct {
 
 // Review is the public JSON representation of a stored review.
 type Review struct {
-	ID                    uint              `json:"id"`
-	Marketplace           string            `json:"marketplace"`
-	MarketplaceLabel      string            `json:"marketplaceLabel,omitempty"`
-	ExternalReviewID      string            `json:"externalReviewId"`
-	ExternalProductID     string            `json:"externalProductId"`
-	SellerArticle         string            `json:"sellerArticle,omitempty"`
-	Rating                *int              `json:"rating"`
-	AuthorName            string            `json:"authorName"`
-	Text                  string            `json:"text"`
-	Pros                  string            `json:"pros"`
-	Cons                  string            `json:"cons"`
-	CreatedAt             time.Time         `json:"createdAt"`
-	UpdatedAt             *time.Time        `json:"updatedAt,omitempty"`
-	Answer                *Answer           `json:"answer,omitempty"`
-	Media                 []Media           `json:"media"`
-	MarketplaceReviewURL  string            `json:"marketplaceReviewUrl,omitempty"`
-	MarketplaceProductURL string            `json:"marketplaceProductUrl,omitempty"`
-	SellerProductURL      string            `json:"sellerProductUrl,omitempty"`
-	Pinned                bool              `json:"pinned,omitempty"`
-	Custom                map[string]string `json:"custom,omitempty"`
+	ID                    uint       `json:"id"`
+	Marketplace           string     `json:"marketplace"`
+	MarketplaceLabel      string     `json:"marketplaceLabel,omitempty"`
+	ExternalReviewID      string     `json:"externalReviewId"`
+	ExternalProductID     string     `json:"externalProductId"`
+	SellerArticle         string     `json:"sellerArticle,omitempty"`
+	Rating                *int       `json:"rating"`
+	Title                 string     `json:"title,omitempty"`
+	AuthorName            string     `json:"authorName"`
+	Text                  string     `json:"text"`
+	Pros                  string     `json:"pros"`
+	Cons                  string     `json:"cons"`
+	CreatedAt             time.Time  `json:"createdAt"`
+	UpdatedAt             *time.Time `json:"updatedAt,omitempty"`
+	Answer                *Answer    `json:"answer,omitempty"`
+	Media                 []Media    `json:"media"`
+	MarketplaceReviewURL  string     `json:"marketplaceReviewUrl,omitempty"`
+	MarketplaceProductURL string     `json:"marketplaceProductUrl,omitempty"`
+	SellerProductURL      string     `json:"sellerProductUrl,omitempty"`
+	// Product panel data: raw name/price strings as reported by the
+	// marketplace at collection time; empty when the marketplace does not
+	// expose them.
+	Product *ProductInfo      `json:"product,omitempty"`
+	Pinned  bool              `json:"pinned,omitempty"`
+	Custom  map[string]string `json:"custom,omitempty"`
+}
+
+// ProductInfo is the raw product-panel payload for a review.
+type ProductInfo struct {
+	Name  string `json:"name,omitempty"`
+	Price string `json:"price,omitempty"`
 }
 
 // Answer is the public JSON representation of a marketplace answer.
@@ -59,12 +70,14 @@ type Answer struct {
 
 // Media is the public JSON representation of review media.
 type Media struct {
-	Kind          string `json:"kind"`
-	URL           string `json:"url"`
-	PreviewURL    string `json:"previewUrl,omitempty"`
-	EmbedProvider string `json:"embedProvider,omitempty"`
-	EmbedID       string `json:"embedId,omitempty"`
-	Position      int    `json:"position"`
+	Kind          string  `json:"kind"`
+	URL           string  `json:"url"`
+	PreviewURL    string  `json:"previewUrl,omitempty"`
+	EmbedProvider string  `json:"embedProvider,omitempty"`
+	EmbedID       string  `json:"embedId,omitempty"`
+	Position      int     `json:"position"`
+	Likes         int     `json:"likes"`              // marketplace "useful" counter; 0 = none
+	Duration      float64 `json:"duration,omitempty"` // video length seconds; 0 = unknown
 }
 
 func (m Mapper) ToReview(review store.Review) Review {
@@ -87,6 +100,8 @@ func (m Mapper) ToReview(review store.Review) Review {
 			EmbedProvider: item.EmbedProvider,
 			EmbedID:       item.EmbedID,
 			Position:      item.Position,
+			Likes:         item.Likes,
+			Duration:      item.Duration,
 		})
 	}
 
@@ -111,6 +126,7 @@ func (m Mapper) ToReview(review store.Review) Review {
 		ExternalProductID:     review.ExternalProductID,
 		SellerArticle:         sellerArticle,
 		Rating:                review.Rating,
+		Title:                 review.Title,
 		AuthorName:            review.AuthorName,
 		Text:                  review.Text,
 		Pros:                  review.Pros,
@@ -122,25 +138,36 @@ func (m Mapper) ToReview(review store.Review) Review {
 		MarketplaceReviewURL:  reviewURL,
 		MarketplaceProductURL: productURL,
 		SellerProductURL:      m.sellerProductURL(review, sellerArticle),
+		Product:               productInfo(review),
 		Pinned:                review.Pinned,
 		Custom:                custom,
 	}
 }
 
-func (m Mapper) ReviewHidden(review store.Review) bool {
-	return m.policyFor(review.Marketplace).Hidden
+// productInfo exposes the collected product name/price; nil when the
+// marketplace did not report them so the JSON field stays absent.
+func productInfo(review store.Review) *ProductInfo {
+	if review.ProductName == "" && review.ProductPrice == "" {
+		return nil
+	}
+	return &ProductInfo{Name: review.ProductName, Price: review.ProductPrice}
 }
 
 func (m Mapper) ExcludedMarketplaces() []string {
 	excluded := make([]string, 0, len(m.MarketplacePolicy))
-	for marketplace, policy := range m.MarketplacePolicy {
+	for marketplace, policy := range m.MarketplacePolicy.Normalized() {
 		marketplace = strings.ToLower(strings.TrimSpace(marketplace))
 		if marketplace != "" && policy.Hidden {
 			excluded = append(excluded, marketplace)
 		}
 	}
+
 	sort.Strings(excluded)
 	return excluded
+}
+
+func (m Mapper) ReviewHidden(review store.Review) bool {
+	return m.policyFor(review.Marketplace).Hidden
 }
 
 func marketplaceReviewURL(review store.Review) string {

@@ -26,7 +26,7 @@
     var host = document.createElement("div");
     document.body.appendChild(host);
     ReviewsWidget.mount(host, options || {});
-    var title = host.querySelector(".rw-dist-title");
+    var title = host.querySelector('.rw-wtitle, [data-role="widget-title"]');
     var text = title ? title.textContent : null;
     host.remove();
     return text;
@@ -37,8 +37,8 @@
   eq("config header.title overrides default", mountTitle({ reviews: [], config: { header: { title: "Отзывы о ковриках" } } }), "Отзывы о ковриках");
   eq("header.title is trimmed", mountTitle({ reviews: [], config: { header: { title: "  Наши отзывы  " } } }), "Наши отзывы");
   eq("blank header.title falls back to default", mountTitle({ reviews: [], config: { header: { title: "   " } } }), "Отзывы покупателей");
-  eq("productName wins over default", mountTitle({ reviews: [], productName: "Платье летнее" }), "Платье летнее");
-  eq("productName wins over config title", mountTitle({ reviews: [], productName: "Платье летнее", config: { header: { title: "Отзывы о ковриках" } } }), "Платье летнее");
+  // Header title is config-driven (mock w-head): productName no longer hijacks it.
+  eq("productName does not override config title", mountTitle({ reviews: [], productName: "Платье летнее" }), "Отзывы покупателей");
 
   // ── Video carousel (layout.mode "video") ───────────────────────────────────
   function normVideo(config) {
@@ -51,13 +51,14 @@
   }
   eq("video layout mode is whitelisted", normVideo({ layout: { mode: "video" } }).layout.mode, "video");
   eq("unknown layout mode falls back to list", normVideo({ layout: { mode: "banana" } }).layout.mode, "list");
-  eq("video tileWidth clamps invalid 0 to min 140", normVideo({ layout: { mode: "video", video: { tileWidth: 0 } } }).layout.video.tileWidth, 140);
+  eq("video tileWidth clamps invalid 0 to min 120", normVideo({ layout: { mode: "video", video: { tileWidth: 0 } } }).layout.video.tileWidth, 120);
+  eq("video tileWidth clamps 999 to max 200", normVideo({ layout: { mode: "video", video: { tileWidth: 999 } } }).layout.video.tileWidth, 200);
   eq("video tileWidth keeps valid custom value", normVideo({ layout: { mode: "video", video: { tileWidth: 150 } } }).layout.video.tileWidth, 150);
   eq("video aspect enum rejects unknown", normVideo({ layout: { mode: "video", video: { aspect: "21:9" } } }).layout.video.aspect, "9:16");
   eq("video aspect enum accepts 9:16", normVideo({ layout: { mode: "video", video: { aspect: "9:16" } } }).layout.video.aspect, "9:16");
   eq("videoRail defaults to true", normVideo({}).visibility.videoRail, true);
   eq("videoRail false is respected", normVideo({ visibility: { videoRail: false } }).visibility.videoRail, false);
-  eq("video booleans default true", normVideo({ layout: { mode: "video" } }).layout.video, { aspect: "9:16", tileWidth: 260, showSourceBadge: true, showAuthor: true, autoplayInViewer: true, productPanel: true });
+  eq("video booleans default true", normVideo({ layout: { mode: "video" } }).layout.video, { aspect: "9:16", tileWidth: 156, showSourceBadge: true, showAuthor: true, autoplayInViewer: true, productPanel: true });
 
   function videoReview() {
     return {
@@ -66,7 +67,7 @@
       authorName: "Мария К.",
       text: "Видео отзыв",
       createdAt: "2026-05-28T12:20:00+03:00",
-      media: [{ kind: "video", url: "https://cdn.test/v.mp4", previewUrl: "https://cdn.test/poster.jpg" }],
+      media: [{ kind: "video", url: "https://cdn.test/v.mp4", previewUrl: "https://cdn.test/poster.jpg", duration: 12 }],
     };
   }
   function mountVideoStrip(options) {
@@ -78,19 +79,12 @@
     return strip;
   }
   var stripVideoMode = mountVideoStrip({ reviews: [videoReview()], config: { layout: { mode: "video" } } });
-  eq("video mode renders dedicated video rail", stripVideoMode.querySelector(".rw-media-rail--video") !== null, true);
-  eq("video rail head says Видео покупателей", (stripVideoMode.querySelector(".rw-media-rail--video").previousElementSibling || {}).textContent !== null && stripVideoMode.textContent.indexOf("Видео покупателей") !== -1, true);
-  eq("video mode photo rail excludes videos", stripVideoMode.querySelector(".rw-media-rail:not(.rw-media-rail--video)") === null, true);
-  eq("video tile carries data-marketplace", stripVideoMode.querySelector(".rw-video-card").getAttribute("data-marketplace"), "ozon");
-  eq("video tile keeps media viewer trigger", stripVideoMode.querySelector(".rw-video-card").getAttribute("data-media-viewer"), "true");
-  eq("video tile has play badge", stripVideoMode.querySelector(".rw-video-card .rw-play-badge") !== null, true);
-  eq("video tile source pill label", stripVideoMode.querySelector(".rw-video-card-src").textContent, "Ozon");
-  eq("video tile author chip", stripVideoMode.querySelector(".rw-video-card-author").textContent, "Мария К.");
-  var stripMergedMode = mountVideoStrip({ reviews: [videoReview()], config: { visibility: { videoRail: false } } });
-  eq("videoRail false keeps merged rail", stripMergedMode.querySelector(".rw-media-rail--video") === null && stripMergedMode.querySelector(".rw-video-card") === null, true);
-  eq("merged rail still renders video item", stripMergedMode.querySelectorAll(".rw-strip-media-item").length, 1);
+  eq("strip renders mock-style tiles (w-stile structure)", stripVideoMode.querySelectorAll(".rw-stile").length, 1);
+  eq("strip tile keeps media viewer trigger", stripVideoMode.querySelector(".rw-stile").getAttribute("data-media-viewer"), "true");
+  eq("strip video tile has play glyph (splay)", stripVideoMode.querySelector(".rw-stile .rw-splay") !== null, true);
+  eq("strip video tile has duration badge (sdur)", stripVideoMode.querySelector(".rw-stile .rw-sdur").textContent, "0:12");
   var stripNoVideo = mountVideoStrip({ reviews: [{ marketplace: "wb", rating: 5, authorName: "Ольга", text: "Без медиа", createdAt: "2026-05-01T00:00:00+03:00", media: [] }], config: { layout: { mode: "video" } } });
-  eq("no video reviews hides video rail", stripNoVideo.querySelector(".rw-media-rail--video") === null, true);
+  eq("no media reviews hide strip", stripNoVideo.querySelectorAll(".rw-stile").length === 0, true);
   eq("layout video class toggled on root", (function () {
     var host = document.createElement("div");
     document.body.appendChild(host);
@@ -131,11 +125,11 @@
     ReviewsWidget.mount(host, options || {});
     return host;
   }
-  eq("shoppable preset is whitelisted", normVideo({ appearance: { preset: "shoppable" } }).appearance.preset, "shoppable");
+  eq("bazaar preset is whitelisted", normVideo({ appearance: { preset: "bazaar" } }).appearance.preset, "bazaar");
   eq("unknown preset falls back to default", normVideo({ appearance: { preset: "banana" } }).appearance.preset, "default");
-  eq("shoppable preset toggles root class", (function () {
-    var host = mountRoot({ reviews: [], config: { appearance: { preset: "shoppable" } } });
-    var ok = host.classList.contains("rw-preset-shoppable");
+  eq("bazaar preset toggles root class", (function () {
+    var host = mountRoot({ reviews: [], config: { appearance: { preset: "bazaar" } } });
+    var ok = host.classList.contains("rw-preset-bazaar");
     host.remove();
     return ok;
   })(), true);
@@ -159,14 +153,14 @@
    // ── Community wall (layout.mode "wall") ────────────────────────────────────
   eq("viewAllHref renders header link when set", (function () {
     var host = mountRoot({ reviews: [], config: { appearance: { viewAllHref: "https://example.test/all" } } });
-    var link = host.querySelector(".rw-header .rw-view-all");
+  var link = host.querySelector(".rw-view-all");
     var ok = link !== null && link.getAttribute("href") === "https://example.test/all";
     host.remove();
     return ok;
   })(), true);
   eq("viewAllHref empty hides header link", (function () {
     var host = mountRoot({ reviews: [] });
-    var ok = host.querySelector(".rw-header .rw-view-all") === null;
+    var ok = host.querySelector(".rw-view-all") === null;
     host.remove();
     return ok;
   })(), true);
@@ -273,6 +267,37 @@
   })(), true);
 
 
+  // Regression: popup star updates must preserve native draft controls and custom fields.
+  eq("popup star preserves draft values", (function () {
+    var host = mountRoot({
+      reviews: [], context: "product", submissionUrl: "/api/review-submissions",
+      submissionConfig: { enabled: true, allowedTypes: ["image/png"], customFields: [
+        { id: "height", label: "Рост", type: "chips", options: ["158", "164"] },
+        { id: "size", label: "Размер", type: "select", options: ["42", "44"] },
+      ] },
+      config: { form: { mode: "button", fields: { title: true, email: true, media: true } } },
+    });
+    host.querySelector('[data-role="head-cta"], [data-role="write-cta"]').click();
+    var modal = host.querySelector('[data-role="form-modal"]');
+    var form = modal.querySelector('[data-role="submit-form"]');
+    form.elements.authorName.value = "Анна";
+    form.elements.title.value = "Заголовок";
+    form.elements.authorEmail.value = "anna@example.test";
+    form.elements.text.value = "Текст отзыва";
+    modal.querySelector('[data-custom-value="158"]').click();
+    form.elements["custom-size"].value = "44";
+    form.querySelector('[data-role="form-star"][data-star="4"]').click();
+    var kept = form.elements.authorName.value === "Анна"
+      && form.elements.title.value === "Заголовок"
+      && form.elements.authorEmail.value === "anna@example.test"
+      && form.elements.text.value === "Текст отзыва"
+      && form.elements["custom-height"].value === "158"
+      && form.elements["custom-size"].value === "44"
+      && modal.querySelectorAll('[data-role="form-star"].is-on').length === 4;
+    host.remove();
+    return kept;
+  })(), true);
+
   // ── Product panel in lightbox (layout.video.productPanel) ──────────────────
   function panelReview() {
     return {
@@ -288,7 +313,7 @@
   }
   eq("product panel renders in product context lightbox", (function () {
     var host = mountRoot({ reviews: [panelReview()] });
-    var trigger = host.querySelector("[data-media-viewer]");
+    var trigger = host.querySelector('[data-role="media-strip"] [data-media-viewer]');
     trigger.click();
     var link = host.querySelector(".rw-product-panel-link");
     var ok = host.querySelector(".rw-product-panel") !== null;
@@ -320,7 +345,7 @@
     var review = panelReview();
     review.sellerProductUrl = "";
     var host = mountRoot({ reviews: [review] });
-    var trigger = host.querySelector("[data-media-viewer]");
+    var trigger = host.querySelector('[data-role="media-strip"] [data-media-viewer]');
     trigger.click();
     var link = host.querySelector(".rw-product-panel-link");
     var ok = link !== null && link.getAttribute("href") === "https://market.test/product";
@@ -328,11 +353,10 @@
     return ok;
   })(), true);
 
-  // ── Chameleon-neutral default + classic preset (T1) ────────────────────────
-  eq("classic preset is whitelisted", normVideo({ appearance: { preset: "classic" } }).appearance.preset, "classic");
-  eq("classic preset toggles root class", (function () {
-    var host = mountRoot({ reviews: [], config: { appearance: { preset: "classic" } } });
-    var ok = host.classList.contains("rw-preset-classic");
+  // ── Chameleon-neutral default + minimal preset ────────────────────────────
+  eq("unknown preset falls back to default class", (function () {
+    var host = mountRoot({ reviews: [], config: { appearance: { preset: "banana" } } });
+    var ok = !host.className.split(" ").some(function (cls) { return cls.indexOf("rw-preset-") === 0; });
     host.remove();
     return ok;
   })(), true);
@@ -342,9 +366,9 @@
     host.remove();
     return ok;
   })(), true);
-  eq("classic class removed when preset changes", (function () {
-    var host = mountRoot({ reviews: [], config: { appearance: { preset: "shoppable" } } });
-    var ok = !host.classList.contains("rw-preset-classic") && host.classList.contains("rw-preset-shoppable");
+  eq("preset class removed when preset changes", (function () {
+    var host = mountRoot({ reviews: [], config: { appearance: { preset: "bazaar" } } });
+    var ok = !host.classList.contains("rw-preset-classic") && host.classList.contains("rw-preset-bazaar");
     host.remove();
     return ok;
   })(), true);
@@ -358,12 +382,6 @@
     var host = mountRoot({ reviews: [], config: { labels: { writeReview: "Оставить мнение" } } });
     var btn = host.querySelector('[data-role="write-cta"]');
     var ok = btn !== null && btn.textContent === "Оставить мнение";
-    host.remove();
-    return ok;
-  })(), true);
-  eq("write CTA visible in product context", (function () {
-    var host = mountRoot({ reviews: [] });
-    var ok = host.querySelector('[data-role="write-cta"]').hidden === false;
     host.remove();
     return ok;
   })(), true);
@@ -409,41 +427,33 @@
     return ok;
   })(), true);
 
-  // ── Search input (T4) ──────────────────────────────────────────────────────
-  function reviewNamed(text) {
-    return { marketplace: "wb", rating: 5, authorName: "Тест", createdAt: "2026-06-01T00:00:00+03:00", text: text };
+  // ── Чипы-фильтры (T4/T5 в структуре макета) ────────────────────────────────
+  function reviewNamed(text, rating) {
+    return { marketplace: "wb", rating: rating || 5, authorName: "Тест", createdAt: "2026-06-01T00:00:00+03:00", text: text };
   }
-  eq("search filters by case-insensitive substring", (function () {
-    var host = mountRoot({ reviews: [reviewNamed("Тёплое платье для лета"), reviewNamed("Куртка с капюшоном")] });
-    var input = host.querySelector('[data-role="search"]');
-    var okBefore = host.querySelectorAll(".rw-card").length === 2;
-    input.value = "ПЛАТЬЕ";
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-    var cards = host.querySelectorAll(".rw-card");
-    var okAfter = cards.length === 1 && cards[0].textContent.indexOf("платье") !== -1;
-    host.remove();
-    return okBefore && okAfter;
-  })(), true);
-  eq("search empty query shows all reviews", (function () {
-    var host = mountRoot({ reviews: [reviewNamed("Тёплое платье"), reviewNamed("Куртка")] });
-    var input = host.querySelector('[data-role="search"]');
-    input.value = "платье";
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-    input.value = "";
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-    var ok = host.querySelectorAll(".rw-card").length === 2;
+  eq("chips row renders base chips", (function () {
+    var host = mountRoot({ reviews: [reviewNamed("Тёплое платье"), reviewNamed("Куртка", 3)] });
+    var chips = host.querySelectorAll(".rw-chip");
+    var labels = [...chips].map(function (c) { return c.textContent; });
+    var ok = labels.indexOf("Все") !== -1 && labels.indexOf("С фото") !== -1 && labels.indexOf("5★") !== -1;
     host.remove();
     return ok;
   })(), true);
-
-  // ── Clickable distribution rows (T5) ───────────────────────────────────────
-  eq("dist rows are buttons that set rating filter", (function () {
-    var host = mountRoot({ reviews: [reviewNamed("Пять звёзд"), { marketplace: "wb", rating: 3, authorName: "Тест", createdAt: "2026-06-02T00:00:00+03:00", text: "Три звёзды" }] });
-    var rows = host.querySelectorAll("button.rw-dist-row");
-    var ok = rows.length === 5;
-    rows[0].click(); // rating 5 row is first
+  eq("chip 5★ filters reviews to five stars", (function () {
+    var host = mountRoot({ reviews: [reviewNamed("Пять звёзд"), reviewNamed("Три звёзды", 3)], config: { defaults: { minRating: 0 } } });
+    var chip = [...host.querySelectorAll(".rw-chip")].find(function (c) { return c.textContent === "5★"; });
+    chip.click();
     var cards = host.querySelectorAll(".rw-card");
-    ok = ok && cards.length === 1 && cards[0].querySelector(".rw-stars").style.getPropertyValue("--rating") === "5";
+    var ok = cards.length === 1 && cards[0].textContent.indexOf("Пять звёзд") !== -1;
+    [...host.querySelectorAll(".rw-chip")].find(function (c) { return c.textContent === "5★"; }).click();
+    ok = ok && host.querySelectorAll(".rw-card").length === 2;
+    host.remove();
+    return ok;
+  })(), true);
+  eq("distribution renders percent bars per mock", (function () {
+    var host = mountRoot({ reviews: [reviewNamed("Пять звёзд")] });
+    var bars = host.querySelectorAll(".rw-dist .rw-db");
+    var ok = bars.length === 5 && bars[0].querySelector("i") !== null;
     host.remove();
     return ok;
   })(), true);
@@ -451,16 +461,10 @@
   // ── Tile hover overlay (T6) ────────────────────────────────────────────────
   eq("tileHover defaults to true", normVideo({}).layout.tileHover, true);
   eq("tileHover false is respected", normVideo({ layout: { tileHover: false } }).layout.tileHover, false);
-  eq("tile hover overlay on video rail tiles", (function () {
-    var host = mountRoot({ reviews: [videoReview()] });
-    var hover = host.querySelector(".rw-video-card .rw-tile-hover");
-    var ok = hover !== null && hover.textContent.indexOf("Смотреть") !== -1 && hover.querySelector(".rw-stars") !== null;
-    host.remove();
-    return ok;
-  })(), true);
   eq("tile hover overlay on wall tiles", (function () {
     var host = mountRoot({ reviews: [videoReview()], config: { layout: { mode: "wall" } } });
-    var ok = host.querySelector(".rw-wall-tile .rw-tile-hover") !== null;
+    var hover = host.querySelector(".rw-wall-tile .rw-tile-hover");
+    var ok = hover !== null && hover.textContent.indexOf("Смотреть") !== -1 && hover.querySelector(".rw-stars") !== null;
     host.remove();
     return ok;
   })(), true);

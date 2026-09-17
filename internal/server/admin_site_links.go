@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
-	"path/filepath"
 	"time"
 
 	staticexport "reviews/internal/export"
@@ -36,32 +34,36 @@ type siteLinksStatus struct {
 	FinishedAt *time.Time `json:"finishedAt,omitempty"`
 }
 
-func (s *Server) siteLinksSnapshot() siteLinksStatus {
+func (s *Server) siteLinksSnapshot(tenantID uint) siteLinksStatus {
 	s.siteLinksMu.Lock()
 	defer s.siteLinksMu.Unlock()
-	status := s.siteLinksJob
+	status := s.siteLinksJobs[tenantID]
 	if status.State == "" {
 		status.State = "idle"
 	}
 	return status
 }
 
-func (s *Server) updateSiteLinksStatus(update func(*siteLinksStatus)) {
+func (s *Server) updateSiteLinksStatus(tenantID uint, update func(*siteLinksStatus)) {
 	s.siteLinksMu.Lock()
 	defer s.siteLinksMu.Unlock()
-	update(&s.siteLinksJob)
+	status := s.siteLinksJobs[tenantID]
+	update(&status)
+	s.siteLinksJobs[tenantID] = status
 }
 
-// tryStartSiteLinksRefresh claims the single job slot; false when a refresh is
-// already running.
-func (s *Server) tryStartSiteLinksRefresh() bool {
+// tryStartSiteLinksRefresh claims one tenant's job slot; false when its refresh is running.
+func (s *Server) tryStartSiteLinksRefresh(tenantID uint) bool {
 	s.siteLinksMu.Lock()
 	defer s.siteLinksMu.Unlock()
-	if s.siteLinksJob.State == "running" {
+	if s.siteLinksJobs == nil {
+		s.siteLinksJobs = make(map[uint]siteLinksStatus)
+	}
+	if s.siteLinksJobs[tenantID].State == "running" {
 		return false
 	}
 	now := time.Now().UTC()
-	s.siteLinksJob = siteLinksStatus{State: "running", StartedAt: &now}
+	s.siteLinksJobs[tenantID] = siteLinksStatus{State: "running", StartedAt: &now}
 	return true
 }
 
@@ -76,18 +78,19 @@ func (s *Server) handleRefreshSiteLinks(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadRequest, errors.New("укажите адрес магазина или sitemap в Настройках, чтобы обновлять каталог товаров"))
 		return
 	}
+	tenantID := store.TenantIDFromCtx(r.Context())
 	full := r.URL.Query().Get("full") == "1" || r.URL.Query().Get("full") == "true"
 
-	if !s.tryStartSiteLinksRefresh() {
-		writeJSON(w, http.StatusConflict, s.siteLinksSnapshot())
+	if !s.tryStartSiteLinksRefresh(tenantID) {
+		writeJSON(w, http.StatusConflict, s.siteLinksSnapshot(tenantID))
 		return
 	}
-	go s.runSiteLinksRefresh(store.TenantIDFromCtx(r.Context()), sitemapURL, full)
-	writeJSON(w, http.StatusAccepted, s.siteLinksSnapshot())
+	go s.runSiteLinksRefresh(tenantID, sitemapURL, full)
+	writeJSON(w, http.StatusAccepted, s.siteLinksSnapshot(tenantID))
 }
 
 func (s *Server) handleSiteLinksRefreshStatus(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, s.siteLinksSnapshot())
+	writeJSON(w, http.StatusOK, s.siteLinksSnapshot(store.TenantIDFromCtx(r.Context())))
 }
 
 // runSiteLinksRefresh crawls the tenant's shop sitemap and regenerates the
@@ -100,7 +103,7 @@ func (s *Server) runSiteLinksRefresh(tenantID uint, sitemapURL string, full bool
 
 	fail := func(err error) {
 		now := time.Now().UTC()
-		s.updateSiteLinksStatus(func(status *siteLinksStatus) {
+		s.updateSiteLinksStatus(tenantID, func(status *siteLinksStatus) {
 			status.State = "error"
 			status.Error = err.Error()
 			status.FinishedAt = &now
@@ -116,16 +119,16 @@ func (s *Server) runSiteLinksRefresh(tenantID uint, sitemapURL string, full bool
 
 	var known []site.ProductLink
 	if !full {
-		if known, err = s.productCatalogLinks(); err != nil {
+		if known, err = s.productCatalogLinks(ctx); err != nil {
 			fail(err)
 			return
 		}
 	}
 	todo := site.NewProductURLs(sitemapURLs, known)
-	s.updateSiteLinksStatus(func(status *siteLinksStatus) { status.Total = len(todo) })
+	s.updateSiteLinksStatus(tenantID, func(status *siteLinksStatus) { status.Total = len(todo) })
 
 	crawled, crawlErr := site.CrawlProductLinks(ctx, client, todo, func(done int) {
-		s.updateSiteLinksStatus(func(status *siteLinksStatus) { status.Crawled = done })
+		s.updateSiteLinksStatus(tenantID, func(status *siteLinksStatus) { status.Crawled = done })
 	})
 	if crawlErr != nil && len(crawled) == 0 && len(todo) > 0 {
 		fail(fmt.Errorf("обход каталога не удался: %w", crawlErr))
@@ -137,7 +140,7 @@ func (s *Server) runSiteLinksRefresh(tenantID uint, sitemapURL string, full bool
 	// The crawl may have consumed the whole job budget; persisting and
 	// regenerating the export must still succeed, so they run on a fresh
 	// context.
-	exportCtx, cancelExport := context.WithTimeout(store.WithTenant(context.Background(), store.DefaultTenantID), siteLinksExportTimeout)
+	exportCtx, cancelExport := context.WithTimeout(store.WithTenant(context.Background(), tenantID), siteLinksExportTimeout)
 	defer cancelExport()
 	products, articles, err := s.regenerateSiteData(exportCtx, merged)
 	if err != nil {
@@ -146,7 +149,7 @@ func (s *Server) runSiteLinksRefresh(tenantID uint, sitemapURL string, full bool
 	}
 
 	now := time.Now().UTC()
-	s.updateSiteLinksStatus(func(status *siteLinksStatus) {
+	s.updateSiteLinksStatus(tenantID, func(status *siteLinksStatus) {
 		status.Products = products
 		status.Articles = articles
 		status.FinishedAt = &now
@@ -164,24 +167,21 @@ func (s *Server) runSiteLinksRefresh(tenantID uint, sitemapURL string, full bool
 // article→URL map, and rewrites the static reviews-data export (bundles +
 // links index). Separated from the crawl so it is testable without network.
 func (s *Server) regenerateSiteData(ctx context.Context, links []site.ProductLink) (products int, articles int, err error) {
-	if s.cfg.ProductLinksPath != "" {
-		if err = os.MkdirAll(filepath.Dir(s.cfg.ProductLinksPath), 0o755); err != nil {
-			return 0, 0, err
-		}
-		file, createErr := os.Create(s.cfg.ProductLinksPath)
-		if createErr != nil {
-			return 0, 0, createErr
-		}
-		if encErr := site.EncodeProductLinks(file, links); encErr != nil {
-			file.Close()
-			return 0, 0, encErr
-		}
-		if closeErr := file.Close(); closeErr != nil {
-			return 0, 0, closeErr
-		}
-	}
+	s.exportMu.Lock()
+	defer s.exportMu.Unlock()
 
-	s.setProductLinks(site.ProductLinkMap(links))
+	path, err := s.productLinksPath(ctx)
+	if err != nil {
+		return 0, 0, err
+	}
+	outDir, err := s.tenantExportDir(ctx)
+	if err != nil {
+		return 0, 0, err
+	}
+	if err := writeProductLinksAtomic(path, links); err != nil {
+		return 0, 0, err
+	}
+	s.setProductLinks(ctx, site.ProductLinkMap(links))
 
 	reviews, err := s.store.ListVisibleReviews(ctx)
 	if err != nil {
@@ -193,24 +193,18 @@ func (s *Server) regenerateSiteData(ctx context.Context, links []site.ProductLin
 	}
 	mapper := reviewjson.Mapper{
 		ProductURLTemplate: s.cfg.ProductURLTemplate,
-		ProductLinks:       s.productLinks(),
+		ProductLinks:       s.productLinks(ctx),
 		MarketplacePolicy:  s.activeMarketplacePolicy(ctx, "product"),
 	}
 	bundles := staticexport.BuildBundles(reviews, mapper, pins)
-
 	generatedAt := time.Now().UTC()
-	outDir := filepath.Join(s.cfg.StaticDir, "reviews-data")
-	if s.tenantExportScope != nil {
-		if scope, err := s.tenantExportScope(ctx); err == nil && scope != "" {
-			outDir = filepath.Join(s.cfg.StaticDir, "reviews-data", scope)
+	if err = replaceExportDir(outDir, func(tmp string) error {
+		if err := staticexport.Write(tmp, bundles, generatedAt); err != nil {
+			return err
 		}
-	}
-	if err = staticexport.Write(outDir, bundles, generatedAt); err != nil {
+		return staticexport.WriteLinks(tmp, staticexport.BuildLinkIndex(links, generatedAt))
+	}); err != nil {
 		return 0, 0, err
 	}
-	if err = staticexport.WriteLinks(outDir, staticexport.BuildLinkIndex(links, generatedAt)); err != nil {
-		return 0, 0, err
-	}
-
 	return len(links), len(bundles), nil
 }

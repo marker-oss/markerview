@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"path"
 	"slices"
 	"strings"
 	"time"
@@ -91,10 +92,9 @@ func originAndSibling(value string) []string {
 	return []string{origin, u.Scheme + "://" + sibling}
 }
 
-// cors adds Access-Control headers for the allowed shop origin on public
-// routes so the embedded widget can fetch reviews data cross-origin. Admin
-// routes are skipped (same-origin only). When no origins are configured the
-// middleware is a no-op, preserving prior behavior.
+// cors adds Access-Control headers to public routes. Tenant data APIs echo
+// only configured origins; immutable shared widget files are public to every
+// embedding shop and use a credential-free wildcard.
 func (s *Server) cors(next http.Handler) http.Handler {
 	allowed := make(map[string]bool, len(s.cfg.AllowedOrigins))
 	for _, o := range s.cfg.AllowedOrigins {
@@ -103,22 +103,51 @@ func (s *Server) cors(next http.Handler) http.Handler {
 		}
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.URL.Path, "/admin/") {
-			if origin := r.Header.Get("Origin"); origin != "" && (allowed[origin] || s.shopOriginAllowed(origin) || tenantOriginsAllowed(r, origin)) {
-				h := w.Header()
-				h.Set("Access-Control-Allow-Origin", origin)
-				h.Add("Vary", "Origin")
-				if r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Method") != "" {
-					h.Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-					h.Set("Access-Control-Allow-Headers", "Accept, Content-Type")
-					h.Set("Access-Control-Max-Age", "86400")
-					w.WriteHeader(http.StatusNoContent)
-					return
-				}
+		if strings.HasPrefix(r.URL.Path, "/admin/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		origin := r.Header.Get("Origin")
+		if origin != "" {
+			w.Header().Add("Vary", "Origin")
+		}
+		if isPublicWidgetAsset(r.URL.Path) && (r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodOptions) {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			if r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Method") != "" {
+				w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
+				w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type")
+				w.Header().Set("Access-Control-Max-Age", "86400")
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+		} else if origin != "" && (allowed[origin] || s.shopOriginAllowed(origin) || tenantOriginsAllowed(r, origin)) {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			if r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Method") != "" {
+				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+				w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type")
+				w.Header().Set("Access-Control-Max-Age", "86400")
+				w.WriteHeader(http.StatusNoContent)
+				return
 			}
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func isPublicWidgetAsset(urlPath string) bool {
+	switch urlPath {
+	case "/loader.js", "/reviews-widget.js", "/reviews-widget.css":
+		return true
+	}
+	if !strings.HasPrefix(urlPath, "/assets/") || path.Clean(urlPath) != urlPath {
+		return false
+	}
+	switch strings.ToLower(path.Ext(urlPath)) {
+	case ".css", ".js", ".woff", ".woff2", ".ttf", ".otf", ".eot", ".svg", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".avif", ".mp4", ".webm":
+		return true
+	default:
+		return false
+	}
 }
 
 // tenantOriginsAllowed reports whether origin belongs to the tenant resolved

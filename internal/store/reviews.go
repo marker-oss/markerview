@@ -36,6 +36,7 @@ func (s *Store) UpsertReview(ctx context.Context, input marketplace.Review) (Ups
 			SellerArticle:     input.SellerArticle,
 			ProductID:         productID,
 			Rating:            input.Rating,
+			Title:             input.Title,
 			AuthorName:        authorName,
 			Text:              input.Text,
 			Pros:              input.Pros,
@@ -46,6 +47,8 @@ func (s *Store) UpsertReview(ctx context.Context, input marketplace.Review) (Ups
 			MPAnswerState:     answerState,
 			Status:            "imported",
 			Raw:               "",
+			ProductName:       input.ProductName,
+			ProductPrice:      input.ProductPrice,
 			FetchedAt:         now,
 		}
 
@@ -71,6 +74,7 @@ func (s *Store) UpsertReview(ctx context.Context, input marketplace.Review) (Ups
 				"seller_article":      input.SellerArticle,
 				"product_id":          productID,
 				"rating":              input.Rating,
+				"title":               input.Title,
 				"author_name":         authorName,
 				"text":                input.Text,
 				"pros":                input.Pros,
@@ -80,6 +84,8 @@ func (s *Store) UpsertReview(ctx context.Context, input marketplace.Review) (Ups
 				"mp_answer_text":      answerText,
 				"mp_answer_state":     answerState,
 				"raw":                 "",
+				"product_name":        input.ProductName,
+				"product_price":       input.ProductPrice,
 				"fetched_at":          now,
 			}
 			if err := tx.Model(&existing).Updates(updates).Error; err != nil {
@@ -135,6 +141,8 @@ func replaceMedia(tx *gorm.DB, reviewID uint, media []marketplace.Media) error {
 			URL:        item.URL,
 			PreviewURL: emptyStringAsNil(item.PreviewURL),
 			Position:   item.Position,
+			Likes:      item.Likes,
+			Duration:   item.Duration,
 		}
 		if err := tx.Clauses(clause.OnConflict{
 			Columns: []clause.Column{{Name: "review_id"}, {Name: "url"}},
@@ -142,6 +150,8 @@ func replaceMedia(tx *gorm.DB, reviewID uint, media []marketplace.Media) error {
 				"kind",
 				"preview_url",
 				"position",
+				"likes",
+				"duration",
 			}),
 		}).Create(&row).Error; err != nil {
 			return err

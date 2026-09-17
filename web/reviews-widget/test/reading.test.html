@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reading journey checks</title>
+<link rel="stylesheet" href="../reviews-widget.css">
+<pre id="out"></pre>
+<script src="../reviews-widget.js"></script>
+<script>
+(async () => {
+  const out = document.querySelector('#out');
+  let passed = 0, failed = 0;
+  const handles = [];
+  const review = (id, marketplace = 'wb') => ({
+    id, externalReviewId: String(id), marketplace, sellerArticle: 'reading-test',
+    rating: 5, authorName: `Покупатель ${id}`, text: `Отзыв номер ${id}`,
+    createdAt: '2026-01-01T12:00:00Z',
+    marketplaceReviewUrl: `https://example.test/reviews/${id}`,
+    media: [{ kind: 'photo', url: new URL('../assets/review-fabric.svg', location.href).href + '#' + id }],
+  });
+  const reviews = Array.from({ length: 8 }, (_, index) => review(index + 1, index % 2 ? 'ozon' : 'wb'));
+  function assert(condition, message) { if (!condition) throw new Error(message); }
+  async function until(predicate, message) {
+    const deadline = performance.now() + 3000;
+    while (!predicate()) {
+      if (performance.now() > deadline) throw new Error(message);
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+  }
+  function mount(config = {}, options = {}, width = 1000) {
+    const root = document.createElement('section');
+    root.style.width = width + 'px';
+    document.body.append(root);
+    const handle = ReviewsWidget.mount(root, {
+      reviews, ...options,
+      config: {
+        ...config,
+        layout: { mode: 'carousel', pageSize: 3, sections: ['filters', 'list'], loadMoreAction: 'dialog', ...config.layout },
+        defaults: { minRating: 0, requireText: false, ...config.defaults },
+      },
+    });
+    handles.push({ root, handle });
+    return root;
+  }
+  async function check(name, run) {
+    try { await run(); passed++; out.textContent += 'PASS ' + name + '\n'; }
+    catch (error) { failed++; out.textContent += 'FAIL ' + name + ': ' + error.message + '\n'; }
+    finally { handles.splice(0).forEach(({ root, handle }) => { handle.destroy(); root.remove(); }); }
+  }
+  await check('carousel scrolls on its first view without load-more', async () => {
+    const root = mount({}, {}, 1100);
+    const list = root.querySelector('[data-role="list"]');
+    await until(() => list.scrollWidth > list.clientWidth, 'first page still contains only fitting cards');
+    const next = root.querySelector('[data-role="carousel-next"]');
+    assert(!root.querySelector('[data-role="carousel-nav"]').hidden && !next.disabled, 'initial carousel navigation unavailable');
+    next.click();
+    await until(() => list.scrollLeft > 0, 'next arrow did not move carousel');
+  });
+  await check('empty carousel retains disabled navigation instead of jumping layout', async () => {
+    const root = mount({}, { reviews: [] });
+    assert(!root.querySelector('[data-role="carousel-nav"]').hidden, 'navigation disappeared');
+    assert(root.querySelector('[data-role="carousel-prev"]').disabled && root.querySelector('[data-role="carousel-next"]').disabled, 'empty navigation is enabled');
+  });
+  await check('reading a card does not open source without explicit link', async () => {
+    const root = mount();
+    const nativeOpen = window.open;
+    let navigated = false;
+    window.open = () => { navigated = true; return null; };
+    try { root.querySelector('.rw-card-text').click(); }
+    finally { window.open = nativeOpen; }
+    assert(!navigated, 'card text opens an external page');
+    const source = root.querySelector('.rw-source-link');
+    assert(source && source.href.startsWith('https://example.test/reviews/'), 'explicit source link absent');
+  });
+  await check('all-review grid keeps media navigation and restores carousel position', async () => {
+    const root = mount({}, {}, 700);
+    const list = root.querySelector('[data-role="list"]');
+    list.scrollLeft = 200;
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    const position = list.scrollLeft;
+    root.querySelector('[data-role="load-more"]').click();
+    const dialog = root.querySelector('[data-role="all-reviews"]');
+    assert(dialog && dialog.open, 'all reviews dialog did not open');
+    const search = dialog.querySelector('[data-role="search"]');
+    assert(search, 'dialog search absent');
+    search.value = 'номер 7';
+    search.dispatchEvent(new Event('input', { bubbles: true }));
+    await until(() => dialog.querySelectorAll('.rw-card').length === 1, 'dialog did not filter full available reviews');
+    assert(dialog.querySelector('.rw-card-text').textContent === 'Отзыв номер 7', 'wrong result');
+    dialog.querySelector('[data-media-viewer]').click();
+    const viewer = root.querySelector('[data-role="media-viewer"]');
+    assert(viewer.open && dialog.open, 'media did not layer over reviews');
+    viewer.querySelector('[data-role="viewer-close"]').click();
+    assert(dialog.open && dialog.querySelector('[data-role="search"]').value === 'номер 7', 'media close lost review search');
+    dialog.querySelector('[data-role="reset-filters"]').click();
+    assert(dialog.querySelector('[data-role="search"]').value === '', 'reset did not clear search');
+    assert(dialog.querySelector('[data-role="results-count"]').textContent.includes('8'), 'result count does not describe all available reviews');
+    dialog.querySelector('[data-role="all-reviews-close"]').click();
+    assert(!dialog.open, 'review dialog did not close');
+    assert(root.querySelector('[data-role="search"]').value === '', 'dialog search leaked into page');
+    assert(Math.abs(root.querySelector('[data-role="list"]').scrollLeft - position) <= 1, 'carousel position lost');
+  });
+  await check('dialog respects source scope and reaches reviews past first remote page', async () => {
+    const nativeFetch = window.fetch;
+    const requested = [];
+    const remote = [review(21), review(22), review(23), review(24), review(25)];
+    window.fetch = (url, options) => {
+      const target = new URL(String(url), location.href);
+      if (target.pathname !== '/__reading-feed') return nativeFetch(url, options);
+      assert(target.searchParams.get('article') === 'reading-test' && target.searchParams.get('public_key') === 'tenant-test', 'remote source scope lost');
+      const offset = Number(target.searchParams.get('offset'));
+      requested.push(offset);
+      return Promise.resolve(new Response(JSON.stringify({ reviews: remote.slice(offset, offset + 2) }), { headers: { 'Content-Type': 'application/json' } }));
+    };
+    try {
+      const root = mount({ layout: { mode: 'list' } }, {
+        reviews: remote.slice(0, 2), fullFeedSource: '/__reading-feed?article=reading-test&public_key=tenant-test', fullFeedOffset: 0, fullFeedLimit: 2,
+      });
+      root.querySelector('[data-role="load-more"]').click();
+      const dialog = root.querySelector('[data-role="all-reviews"]');
+      assert(dialog && dialog.open, 'remote view unavailable');
+      await until(() => requested.includes(4), 'remote scan stopped on duplicate first page');
+      const search = dialog.querySelector('[data-role="search"]');
+      search.value = 'номер 25';
+      search.dispatchEvent(new Event('input', { bubbles: true }));
+      await until(() => dialog.querySelector('.rw-card-text')?.textContent === 'Отзыв номер 25', 'last remote review unavailable in search');
+      assert(dialog.querySelectorAll('.rw-card').length === 1, 'remote review duplicated');
+    } finally { window.fetch = nativeFetch; }
+  });
+  await check('closing pending remote view stops continuation and does not reopen it', async () => {
+    const nativeFetch = window.fetch;
+    let resolvePage, requests = 0;
+    window.fetch = (url, options) => {
+      if (new URL(String(url), location.href).pathname !== '/__pending-reading') return nativeFetch(url, options);
+      requests++;
+      return new Promise(resolve => { resolvePage = resolve; });
+    };
+    try {
+      const root = mount({ layout: { mode: 'list' } }, { reviews: [review(31)], fullFeedSource: '/__pending-reading', fullFeedOffset: 0, fullFeedLimit: 2 });
+      root.querySelector('[data-role="load-more"]').click();
+      const dialog = root.querySelector('[data-role="all-reviews"]');
+      assert(dialog && dialog.open, 'pending dialog unavailable');
+      await until(() => resolvePage, 'no remote request started');
+      dialog.querySelector('[data-role="all-reviews-close"]').click();
+      resolvePage(new Response(JSON.stringify({ reviews: [review(32), review(33)] }), { headers: { 'Content-Type': 'application/json' } }));
+      await new Promise(resolve => setTimeout(resolve, 30));
+      assert(!dialog.open && requests === 1, 'closed dialog reopened or continued fetching');
+      assert(root.querySelector('.rw-card-text').textContent === 'Отзыв номер 31', 'late response replaced restored review');
+      root.__reviewsWidget.destroy();
+      assert(root.childElementCount === 0, 'destroy left dialog content mounted');
+    } finally { window.fetch = nativeFetch; }
+  });
+  await check('remote failure keeps reviews and offers an explicit retry', async () => {
+    const nativeFetch = window.fetch;
+    let failPage = true, requests = 0;
+    window.fetch = (url, options) => {
+      if (new URL(String(url), location.href).pathname !== '/__failed-reading') return nativeFetch(url, options);
+      requests++;
+      return Promise.resolve(new Response(JSON.stringify(failPage ? { error: 'Недоступно' } : { reviews: [review(42)] }), { status: failPage ? 503 : 200, headers: { 'Content-Type': 'application/json' } }));
+    };
+    try {
+      const root = mount({ layout: { mode: 'list' } }, { reviews: [review(41)], fullFeedSource: '/__failed-reading', fullFeedOffset: 1, fullFeedLimit: 2 });
+      root.querySelector('[data-role="load-more"]').click();
+      const dialog = root.querySelector('[data-role="all-reviews"]');
+      assert(dialog && dialog.open, 'remote dialog unavailable');
+      await until(() => dialog.querySelector('[data-role="status"]')?.getClientRects().length, 'load error not visible');
+      assert(dialog.querySelector('.rw-card-text')?.textContent === 'Отзыв номер 41', 'existing review disappeared on error');
+      const retry = dialog.querySelector('[data-role="load-more"]');
+      assert(retry && !retry.hidden && !retry.disabled, 'load error has no retry action');
+      const attempts = requests;
+      await new Promise(resolve => setTimeout(resolve, 50));
+      assert(requests === attempts, 'failed request retries without user action');
+      failPage = false;
+      retry.click();
+      await until(() => Array.from(dialog.querySelectorAll('.rw-card-text')).some(el => el.textContent === 'Отзыв номер 42'), 'retry did not load remaining review');
+    } finally { window.fetch = nativeFetch; }
+  });
+  await check('all-review view preserves seller restrictions and hidden sources', async () => {
+    const root = mount({
+      defaults: { minRating: 4 },
+      marketplacePolicy: { wb: { showSourceLinks: false }, ozon: { hidden: true } },
+    }, { reviews: [review(51), { ...review(52), rating: 2 }, review(53, 'ozon')] });
+    root.querySelector('[data-role="load-more"]').click();
+    const dialog = root.querySelector('[data-role="all-reviews"]');
+    assert(dialog && dialog.open, 'restricted review dialog unavailable');
+    assert(dialog.querySelectorAll('.rw-card').length === 1, 'dialog bypassed seller filtering');
+    assert(dialog.querySelector('.rw-card-text').textContent === 'Отзыв номер 51', 'wrong restricted review');
+    assert(!dialog.querySelector('.rw-source-link'), 'dialog exposed a disabled source link');
+  });
+  await check('retry resumes the repeated page without skipping unseen reviews', async () => {
+    const nativeFetch = window.fetch;
+    let repeated = true;
+    const offsets = [];
+    window.fetch = (url, options) => {
+      const target = new URL(String(url), location.href);
+      if (target.pathname !== '/__repeated-reading') return nativeFetch(url, options);
+      const offset = Number(target.searchParams.get('offset'));
+      offsets.push(offset);
+      const items = offset === 0 || (offset === 2 && repeated) ? [review(61), review(62)] : offset === 2 ? [review(63), review(64)] : [];
+      return Promise.resolve(new Response(JSON.stringify({ reviews: items }), { headers: { 'Content-Type': 'application/json' } }));
+    };
+    try {
+      const root = mount({ layout: { mode: 'list' } }, { reviews: [review(61), review(62)], fullFeedSource: '/__repeated-reading', fullFeedOffset: 0, fullFeedLimit: 2 });
+      root.querySelector('[data-role="load-more"]').click();
+      const dialog = root.querySelector('[data-role="all-reviews"]');
+      assert(dialog && dialog.open, 'repeated-page dialog unavailable');
+      await until(() => dialog.querySelector('[data-role="status"]').textContent.includes('повторяет'), 'repeated page did not report stalled source');
+      repeated = false;
+      dialog.querySelector('[data-role="load-more"]').click();
+      await until(() => Array.from(dialog.querySelectorAll('.rw-card-text')).some(el => el.textContent === 'Отзыв номер 64'), 'retry skipped the recovered page');
+      assert(offsets.slice(0, 3).join(',') === '0,2,2', 'retry advanced past a failed cursor');
+    } finally { window.fetch = nativeFetch; }
+  });
+  await check('nested media view never exposes executable outgoing links', async () => {
+    const unsafe = { ...review(71), marketplaceReviewUrl: 'javascript:alert(1)', sellerProductUrl: 'javascript:alert(2)', media: [{ kind: 'photo', url: 'javascript:alert(3)' }] };
+    const root = mount({}, { reviews: [unsafe] });
+    root.querySelector('[data-role="load-more"]').click();
+    const dialog = root.querySelector('[data-role="all-reviews"]');
+    assert(dialog && dialog.open, 'unsafe-link review cannot be inspected');
+    dialog.querySelector('[data-media-viewer]').click();
+    const viewer = root.querySelector('[data-role="media-viewer"]');
+    assert(!root.querySelector('.rw-source-link'), 'executable review link rendered');
+    assert(!viewer.querySelector('.rw-product-panel-link'), 'executable product link rendered');
+    const original = viewer.querySelector('[data-role="viewer-original"]');
+    assert(!original || (!original.hasAttribute('href') && original.hidden), 'executable original link exposed');
+  });
+  out.textContent += '\n' + passed + ' passed, ' + failed + ' failed\n';
+  document.title = failed ? 'FAIL' : 'ALL PASS';
+})();
+</script>
+</html>

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -21,9 +22,8 @@ type signupRequest struct {
 	ShopOrigin string `json:"shopOrigin"`
 }
 
-// handleSignup creates a tenant with a 14-day trial and its first admin,
-// then logs the new admin in. Only mounted in SaaS mode (strict tenant
-// mode); single-tenant installs keep setup as their only onboarding path.
+// handleSignup creates a tenant with a seven-day hosted trial and its first admin,
+// then logs the new admin in. Single-tenant installs keep setup as onboarding.
 func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 	if !store.StrictTenantMode() {
 		writeError(w, http.StatusNotFound, errors.New("signup is not enabled"))
@@ -31,24 +31,38 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req signupRequest
+	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, errors.New("invalid request body"))
 		return
 	}
 	req.Login = strings.TrimSpace(req.Login)
-	req.ShopOrigin = strings.TrimRight(strings.TrimSpace(req.ShopOrigin), "/")
+	if s.cfg.NormalizeLogin != nil {
+		canonical, err := s.cfg.NormalizeLogin(req.Login)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		req.Login = canonical
+	}
 	if req.Login == "" {
 		writeError(w, http.StatusBadRequest, errors.New("login is required"))
 		return
 	}
-	if len(req.Password) < 8 {
-		writeError(w, http.StatusBadRequest, errors.New("password must be at least 8 characters"))
+	if len(req.Login) > 64 {
+		writeError(w, http.StatusBadRequest, errors.New("login must be at most 64 characters"))
 		return
 	}
-	if req.ShopOrigin == "" || !strings.HasPrefix(req.ShopOrigin, "http") {
-		writeError(w, http.StatusBadRequest, errors.New("адрес магазина обязателен, например https://myshop.ru"))
+	if len(req.Password) < 8 || len(req.Password) > 128 {
+		writeError(w, http.StatusBadRequest, errors.New("password must be 8 to 128 characters"))
 		return
 	}
+	shopOrigin, err := normalizeShopOrigin(req.ShopOrigin)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, errors.New("адрес магазина должен быть HTTP(S)-адресом, например https://myshop.ru"))
+		return
+	}
+	req.ShopOrigin = shopOrigin
 
 	hash, err := auth.HashPassword(req.Password)
 	if err != nil {
@@ -63,7 +77,14 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tenant, err := s.store.CreateTenantWithAdmin(r.Context(), req.Login, hash, req.ShopOrigin)
+	// Hosted signup creates a pending tenant: the trial window opens only
+	// when the email is confirmed (OnSignup installed). Self-hosted signup
+	// keeps its immediate 14-day trial.
+	trialDuration := 14 * 24 * time.Hour
+	if s.cfg.OnSignup != nil && store.StrictTenantMode() {
+		trialDuration = 0
+	}
+	tenant, err := s.store.CreateTenantWithAdminFor(r.Context(), req.Login, hash, req.ShopOrigin, trialDuration, s.cfg.AdmitSignup)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") || strings.Contains(err.Error(), "duplicate key") {
 			writeError(w, http.StatusConflict, errors.New("этот логин уже занят"))
@@ -71,6 +92,29 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 		}
 		writeError(w, http.StatusInternalServerError, err)
 		return
+	}
+
+	if s.cfg.OnSignup != nil {
+		// The account stays pending when the mail cannot be delivered: the
+		// tenant is not rolled back (DB and SMTP are not atomic — a timeout
+		// can happen after the message was accepted), and the SPA offers a
+		// resend from the verification screen.
+		if err := s.cfg.OnSignup(r.Context(), s.store, tenant.AdminID, req.Login); err != nil {
+			s.logger.Error("signup verification mail failed", "login", req.Login, "error", err)
+			writeJSON(w, http.StatusCreated, map[string]any{
+				"status":      "verification_required",
+				"publicKey":   tenant.Tenant.PublicKey,
+				"mailDelayed": true,
+			})
+			return
+		}
+		if store.StrictTenantMode() {
+			writeJSON(w, http.StatusCreated, map[string]any{
+				"status":    "verification_required",
+				"publicKey": tenant.Tenant.PublicKey,
+			})
+			return
+		}
 	}
 
 	// Log the admin in right away: the SPA lands on its own tenant.
@@ -90,4 +134,16 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 		"publicKey": tenant.Tenant.PublicKey,
 		"trialEnds": tenant.Tenant.TrialEndsAt,
 	})
+}
+
+func normalizeShopOrigin(raw string) (string, error) {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
+		return "", errors.New("invalid origin")
+	}
+	scheme := strings.ToLower(u.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return "", errors.New("invalid origin")
+	}
+	return scheme + "://" + strings.ToLower(u.Host), nil
 }

@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"reviews/internal/store"
 )
 
 func TestAutoRefreshCatalogOnce(t *testing.T) {
@@ -41,7 +43,7 @@ func TestAutoRefreshCatalogOnce(t *testing.T) {
 	// after completion the job must finish successfully.
 	deadline := time.Now().Add(10 * time.Second)
 	for {
-		snap := s.siteLinksSnapshot()
+		snap := s.siteLinksSnapshot(store.DefaultTenantID)
 		if snap.State == "running" {
 			if s.autoRefreshCatalogOnce(context.Background()) {
 				t.Fatal("tick must not start a second crawl while one is running")
@@ -53,7 +55,7 @@ func TestAutoRefreshCatalogOnce(t *testing.T) {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("crawl did not finish, state=%+v", s.siteLinksSnapshot())
+			t.Fatalf("crawl did not finish, state=%+v", s.siteLinksSnapshot(store.DefaultTenantID))
 		}
 		time.Sleep(50 * time.Millisecond)
 	}

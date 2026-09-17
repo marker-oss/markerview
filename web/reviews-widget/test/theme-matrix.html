@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>theme matrix</title>
+<link rel="stylesheet" href="/reviews-widget.css">
+<style>body{margin:0;padding:24px;font:14px system-ui;background:#f3f4f6}
+h2{margin:24px 0 8px;font-size:16px}
+.w{max-width:1100px;border:1px dashed #bbb;padding:8px;margin-bottom:8px}</style>
+</head>
+<body>
+<h1 style="font-size:18px">Матрица тем из OpenDesign-мокапов · 1280 и 375</h1>
+<div id="hosts"></div>
+<script>
+fetch("/reviews-widget.js").then(r=>r.text()).then(t=>{
+  const s=document.createElement("script"); s.textContent=t; document.head.appendChild(s);
+  const themes = {
+    default: { accent:"#68478D", text:"#2A2630", muted:"#6E6877", panel:"#fff", border:"#E7DFD7", star:"#C99A3F" },
+    "native-kit": { accent:"#1677ff", text:"#0f2248", muted:"#62708d", panel:"#fff", border:"#dfe3eb", star:"#ffb800" },
+    minimal: { accent:"#111827", text:"#111827", muted:"#6b7280", panel:"#fff", border:"#e5e7eb", star:"#f5b301" },
+    "ugc-community": { accent:"#1E5B4F", text:"#1F2521", muted:"#5B6560", panel:"#fff", border:"#E4E6E2", star:"#E8A33D" },
+    "ugc-editorial": { accent:"#C70000", text:"#000000", muted:"#515151", panel:"#fff", border:"#E3E3E3", star:"#000000" },
+    bazaar: { accent:"#7C2D5A", text:"#17191D", muted:"#5D6167", panel:"#fff", border:"#E3E3DF", star:"#E8A33D" },
+  };
+  const hosts = document.getElementById("hosts");
+  Object.entries(themes).forEach(([id, theme]) => {
+    const h = document.createElement("h2"); h.textContent = id; hosts.appendChild(h);
+    const w = document.createElement("div"); w.className = "w";
+    const root = document.createElement("section"); root.className = "reviews-widget"; w.appendChild(root); hosts.appendChild(w);
+    ReviewsWidget.mount(root, { reviews: ReviewsWidget.sampleReviews, productName: "Платье (" + id + ")", config: {
+      appearance:{preset:id}, theme,
+      typography:{inheritSite:id==="native-kit",radius:12,density:"comfortable"},
+      layout:{mode:id==="ugc-community"?"wall":id==="ugc-editorial"?"video":"list",columns:2,pageSize:3,sections:["summary","media","filters","list","form"]},
+      visibility:{photos:true,sellerAnswers:true,prosCons:true,marketplaceBadges:true,ratingDistribution:true,videoRail:true,filters:true,questions:false},
+      defaults:{minRating:0,requireText:false,marketplace:"all",initialSort:"newest"}
+    }});
+  });
+});
+</script>
+</body></html>

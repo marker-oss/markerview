@@ -1,6 +1,11 @@
-# Виджет отзывов
+# MarkerView
 
-«Виджет отзывов» — автономный Go-сервис, который собирает отзывы о товарах продавца с
+[![CI](https://github.com/marker-oss/markerview/actions/workflows/ci.yml/badge.svg)](https://github.com/marker-oss/markerview/actions/workflows/ci.yml)
+[![Go](https://img.shields.io/badge/Go-1.26%2B-00ADD8?logo=go&logoColor=white)](https://go.dev)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+[![Site](https://img.shields.io/badge/site-markerview.ru-2f6fed)](https://markerview.ru)
+
+**MarkerView** — автономный Go-сервис, который собирает отзывы о товарах продавца с
 маркетплейсов (Wildberries, Яндекс Маркет; Ozon — за флагом, требует платной
 подписки), хранит их в локальной базе, даёт админ-панель для модерации и
 настройки и отдаёт виджет с отзывами для встраивания на сайт.
@@ -8,14 +13,33 @@
 Один бинарник делает всё: мастер установки, миграции БД, синхронизацию,
 HTTP-сервер, админку, экспорт статических данных и виджет.
 
+> **English:** MarkerView is a self-hosted product-reviews widget for e-commerce
+> sellers. It pulls reviews from Russian marketplaces (Wildberries, Yandex Market,
+> Ozon), keeps them in your own database, and serves an embeddable widget plus a
+> moderation panel. Single Go binary, no external dependencies, Apache-2.0.
+
 **Быстрый старт:** скачайте бинарник, запустите `./reviews install`, заполните
 мастер установки — сервис сам развернётся на VPS, включит HTTPS и покажет адрес
 админки.
 
+Скачайте готовый бинарник со страницы [последнего релиза](https://github.com/marker-oss/markerview/releases/latest), затем запустите мастер:
+
 ```sh
-curl -fsSL https://raw.githubusercontent.com/marker-oss/yakit-reviews-extension/main/install.sh | sh
+chmod +x reviews
 ./reviews install
 ```
+
+## Self-hosted или облако
+
+Этот репозиторий — полная self-hosted-версия под Apache-2.0: все функции
+доступны, без лимитов и без аккаунта у нас. Разворачиваете на своём сервере —
+данные остаются у вас.
+
+Не хотите администрировать сервер — есть облачная версия на
+[markerview.ru](https://markerview.ru): тот же сервис, но обслуживаем мы, по
+подписке. Выбор не влияет на функциональность self-hosted-версии.
+
+**Разработчикам и контрибьюторам:** [техническая документация](docs/technical/README.md) — архитектура, контракты данных, локальный запуск, проверки и эксплуатация. В ней отдельно отмечены текущее состояние и принятые направления; установщик ниже сохраняется как прежний путь, а дальнейшее развитие поставки ориентировано на контейнеры.
 
 **Нужна установка под ключ, поддержка или доработка под конкретные задачи?**
 Пишите в Telegram: [@pishite0suda](https://t.me/pishite0suda).
@@ -102,16 +126,10 @@ curl -fsSL https://raw.githubusercontent.com/marker-oss/yakit-reviews-extension/
 или доработкой системы под ваш сценарий, напишите:
 [@pishite0suda](https://t.me/pishite0suda).
 
-### Шаг 1. Скачать установщик
+### Шаг 1. Скачать бинарник
 
-**Linux / macOS — одной командой** (сам определит ОС и архитектуру и скачает
-нужный бинарник в текущую папку):
-```sh
-curl -fsSL https://raw.githubusercontent.com/marker-oss/yakit-reviews-extension/main/install.sh | sh
-```
-
-**Вручную** — выберите файл под свою систему на странице
-[releases](https://github.com/marker-oss/yakit-reviews-extension/releases/latest):
+Выберите файл под свою систему на странице
+[releases](https://github.com/marker-oss/markerview/releases/latest):
 
 | ОС | Файл |
 |----|------|
@@ -123,15 +141,15 @@ curl -fsSL https://raw.githubusercontent.com/marker-oss/yakit-reviews-extension/
 
 Пример для Linux:
 ```sh
-curl -L -o reviews https://github.com/marker-oss/yakit-reviews-extension/releases/latest/download/reviews-linux-amd64
+curl -L -o reviews https://github.com/marker-oss/markerview/releases/latest/download/reviews-linux-amd64
 chmod +x reviews
 ```
 На Windows — скачайте `.exe` из таблицы и запускайте из PowerShell.
 
 > Нет готового релиза? Соберите бинарник из исходников (нужен Go 1.26+):
 > ```sh
-> git clone https://github.com/marker-oss/yakit-reviews-extension.git
-> cd yakit-reviews-extension && go build -o reviews ./cmd/reviews
+> git clone https://github.com/marker-oss/markerview.git
+> cd markerview && go build -o reviews ./cmd/reviews
 > ```
 
 ### Шаг 2. Подготовить требования (чеклист)
@@ -301,7 +319,7 @@ SSH-ключ), домены (сервис отзывов + origin магазин
 ### Вариант A — Docker (рекомендуется)
 
 ```sh
-git clone https://github.com/marker-oss/yakit-reviews-extension.git reviews
+git clone https://github.com/marker-oss/markerview.git reviews
 cd reviews
 
 # 1. Подготовьте конфигурацию
@@ -332,7 +350,7 @@ docker compose down            # остановить (том с данными 
 ### Вариант B — из исходников (без Docker)
 
 ```sh
-git clone https://github.com/marker-oss/yakit-reviews-extension.git reviews
+git clone https://github.com/marker-oss/markerview.git reviews
 cd reviews
 cp .env.example .env           # отредактируйте
 
@@ -496,6 +514,34 @@ reviews export [--out web/reviews-data]
   типографики, видимости элементов и публичной выдачи по площадкам: можно скрыть
   отзывы выбранного источника, заменить его подпись и отключить ссылки на
   источник отзыва. Публикация версионная, есть откат к предыдущей версии.
+  Настраиваются схема шапки, порядок секций, раскладки медиа, оформление ответов
+  продавца, плеер, публичные фильтры и расположение формы. Пресеты меняют
+  оформление, сохраняя правила отбора, поля формы и настройки площадок.
+  В «Продвинутом» доступны готовые светлые/тёмная палитры, ручной выбор цветов
+  и переключатель названий площадок на иконки. Переименованные источники
+  остаются текстом. Макет «Лента» поддерживает свайп, горизонтальную прокрутку
+  и стрелки перелистывания; рядная шапка перестраивается под ширину контейнера.
+  Лента показывает следующие карточки и подгружает их по мере прокрутки —
+  предварительно нажимать «Показать ещё» не нужно. В «Вид → Как показать
+  остальные отзывы» выбирается действие кнопки: добавление на страницу или
+  окно «Все отзывы» (`layout.loadMoreAction: "inline" | "dialog"`). В окне
+  доступны сетка, поиск, фильтры, сортировка и сброс; на телефоне оно открывается
+  на весь экран. Пока полная выдача загружается, счётчик явно сообщает об этом.
+  Закрытие фото возвращает к сетке, закрытие окна — к прежнему месту ленты.
+  Переход на маркетплейс выполняется только по ссылке «Открыть источник отзыва»,
+  а не нажатием на текст карточки. Правила отбора магазина сохраняются.
+  Сводка считается по доступным отзывам с учётом правил магазина, но независимо
+  от поиска покупателя: «Всего» обозначает весь доступный набор, «Найдено» —
+  результат поиска и фильтров. При неполной загрузке выводится «Загружено»,
+  а оценки и количество отмечаются как рассчитанные среди загруженных отзывов.
+  Доля оценок 4–5★ не называется рекомендацией. Строки распределения показывают
+  количество оценок и работают как фильтры; оценки ниже минимума магазина
+  недоступны для выбора, само правило отбора не изменяется.
+  Черновик хранится отдельно для карточки товара и главной страницы; отключённые
+  секции остаются отключёнными после повторного открытия. Мок-предпросмотр
+  использует тот же виджет, но отправка отзывов в нём только демонстрационная.
+  Имя, email и согласие обязательны для настоящей отправки; число вложений
+  ограничено выбранным значением и лимитом сервера (берётся меньший).
 - **Встраивание (Embed)** — готовый сниппет для вставки виджета на сайт.
 
 Все изменяющие запросы защищены сессией и CSRF-токеном (double-submit cookie).

@@ -74,7 +74,7 @@ func (s *Server) handleAdminReviews(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mapper := reviewjson.Mapper{ProductURLTemplate: s.cfg.ProductURLTemplate, ProductLinks: s.productLinks()}
+	mapper := reviewjson.Mapper{ProductURLTemplate: s.cfg.ProductURLTemplate, ProductLinks: s.productLinks(r.Context())}
 	items := make([]adminReview, 0, len(reviews))
 	for _, rv := range reviews {
 		item := adminReview{

@@ -14,6 +14,8 @@ import (
 	"reviews/internal/server"
 	"reviews/internal/store"
 	"reviews/internal/syncer"
+
+	"gorm.io/gorm"
 )
 
 // Options customizes the runtime for closed-source overlays. The zero value
@@ -29,10 +31,14 @@ type Options struct {
 	ExtraAdminRoutes func(s *server.Server) *http.ServeMux
 	// ExtraPublicRoutes registers public routes (payment webhooks): mounted
 	// under /billing/.
-	ExtraPublicRoutes func(s *server.Server) *http.ServeMux
-	// OnServerStart runs right after the server is built, before Run: the
-	// overlay starts its own background loops here (subscription expiry).
-	OnServerStart func(ctx context.Context, db *store.Store, s *server.Server)
+	ExtraPublicRoutes        func(s *server.Server) *http.ServeMux
+	ExtraAuthRoutes          func(s *server.Server) *http.ServeMux
+	SignupEnabled            func(context.Context) (bool, error)
+	NormalizeLogin           func(string) (string, error)
+	OnSignup                 func(context.Context, *store.Store, uint, string) error
+	RequireLoginVerification func(store.AdminUser) bool
+	OnServerStart            func(ctx context.Context, db *store.Store, s *server.Server)
+	AdmitSignup              func(*gorm.DB) error
 }
 
 // OpenStore opens the database, installs the credentials cipher (SaaS:
@@ -126,6 +132,12 @@ func Serve(ctx context.Context, cfg config.Config, logger *slog.Logger, opts Opt
 		ResolveQuestionPublisher: operations.ResolveQuestionPublisher,
 		ExtraAdminRoutes:         opts.ExtraAdminRoutes,
 		ExtraPublicRoutes:        opts.ExtraPublicRoutes,
+		ExtraAuthRoutes:          opts.ExtraAuthRoutes,
+		OnSignup:                 opts.OnSignup,
+		RequireLoginVerification: opts.RequireLoginVerification,
+		NormalizeLogin:           opts.NormalizeLogin,
+		SignupEnabled:            opts.SignupEnabled,
+		AdmitSignup:              opts.AdmitSignup,
 		OzonProductsProbe: func(probeCtx context.Context) error {
 			probeCtx, cancel := context.WithTimeout(probeCtx, 10*time.Second)
 			defer cancel()

@@ -10,13 +10,13 @@ import (
 
 const (
 	DefaultSSHPort       = 22
-	DefaultRepoURL       = "https://github.com/marker-oss/yakit-reviews-extension.git"
+	DefaultRepoURL       = "https://github.com/marker-oss/markerview.git"
 	DefaultDeployRef     = "main"
 	DefaultSourceDir     = "/srv/reviews-src"
 	DefaultReviewsDomain = "reviews.myshop.example"
 	// DefaultImage is the prebuilt multi-arch image pulled on the VPS, so the
 	// server is not compiled from source during installation.
-	DefaultImage = "ghcr.io/marker-oss/yakit-reviews-extension:latest"
+	DefaultImage = "ghcr.io/marker-oss/markerview:latest"
 )
 
 type SSHAuthMethod string
