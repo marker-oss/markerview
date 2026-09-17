@@ -1,6 +1,11 @@
-# Виджет отзывов
+# MarkerView
 
-«Виджет отзывов» — автономный Go-сервис, который собирает отзывы о товарах продавца с
+[![CI](https://github.com/marker-oss/markerview/actions/workflows/ci.yml/badge.svg)](https://github.com/marker-oss/markerview/actions/workflows/ci.yml)
+[![Go](https://img.shields.io/badge/Go-1.26%2B-00ADD8?logo=go&logoColor=white)](https://go.dev)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+[![Site](https://img.shields.io/badge/site-markerview.ru-2f6fed)](https://markerview.ru)
+
+**MarkerView** — автономный Go-сервис, который собирает отзывы о товарах продавца с
 маркетплейсов (Wildberries, Яндекс Маркет; Ozon — за флагом, требует платной
 подписки), хранит их в локальной базе, даёт админ-панель для модерации и
 настройки и отдаёт виджет с отзывами для встраивания на сайт.
@@ -8,14 +13,29 @@
 Один бинарник делает всё: мастер установки, миграции БД, синхронизацию,
 HTTP-сервер, админку, экспорт статических данных и виджет.
 
+> **English:** MarkerView is a self-hosted product-reviews widget for e-commerce
+> sellers. It pulls reviews from Russian marketplaces (Wildberries, Yandex Market,
+> Ozon), keeps them in your own database, and serves an embeddable widget plus a
+> moderation panel. Single Go binary, no external dependencies, Apache-2.0.
+
 **Быстрый старт:** скачайте бинарник, запустите `./reviews install`, заполните
 мастер установки — сервис сам развернётся на VPS, включит HTTPS и покажет адрес
 админки.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/marker-oss/yakit-reviews-extension/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/marker-oss/markerview/main/install.sh | sh
 ./reviews install
 ```
+
+## Self-hosted или облако
+
+Этот репозиторий — полная self-hosted-версия под Apache-2.0: все функции
+доступны, без лимитов и без аккаунта у нас. Разворачиваете на своём сервере —
+данные остаются у вас.
+
+Не хотите администрировать сервер — есть облачная версия на
+[markerview.ru](https://markerview.ru): тот же сервис, но обслуживаем мы, по
+подписке. Выбор не влияет на функциональность self-hosted-версии.
 
 **Разработчикам и контрибьюторам:** [техническая документация](docs/technical/README.md) — архитектура, контракты данных, локальный запуск, проверки и эксплуатация. В ней отдельно отмечены текущее состояние и принятые направления; установщик ниже сохраняется как прежний путь, а дальнейшее развитие поставки ориентировано на контейнеры.
 

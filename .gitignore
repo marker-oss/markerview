@@ -17,9 +17,8 @@ coverage.out
 # Serena language-server workspace
 /.serena/
 
-# Private business docs (kept out of the public repo)
-docs/superpowers/plans/
-docs/superpowers/specs/
+# Private working notes (plans, specs, research) — never published
+docs/superpowers/
 
 # Landing (markerview.ru): private — contains seller requisites and the public offer
 /landing/
