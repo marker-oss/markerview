@@ -111,14 +111,21 @@ func (s *Store) CreateTenantWithAdmin(ctx context.Context, login, passwordHash, 
 // overlay can use it to enforce registration state and capacity atomically.
 type TenantSignupAdmission func(*gorm.DB) error
 
+// TenantStatusPending marks a hosted tenant whose owner has not confirmed
+// their email yet: it occupies capacity but has no trial window and no
+// public access. StartTrialOnVerification turns it into a real trial.
+const TenantStatusPending = "pending"
+
+// CreateTenantWithAdminFor creates the tenant, its first admin and the shop
+// origin setting in one transaction. A non-positive trialDuration creates the
+// tenant as pending: the trial only starts once the email is confirmed, so an
+// unconfirmed signup can never consume trial days.
 func (s *Store) CreateTenantWithAdminFor(ctx context.Context, login, passwordHash, shopOrigin string, trialDuration time.Duration, admission TenantSignupAdmission) (TenantWithAdmin, error) {
 	key := make([]byte, 32)
 	if _, err := rand.Read(key); err != nil {
 		return TenantWithAdmin{}, err
 	}
-	if trialDuration <= 0 {
-		trialDuration = 14 * 24 * time.Hour
-	}
+	pending := trialDuration <= 0
 	var result TenantWithAdmin
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if admission != nil {
@@ -127,10 +134,14 @@ func (s *Store) CreateTenantWithAdminFor(ctx context.Context, login, passwordHas
 			}
 		}
 		tenant := Tenant{
-			Slug:        login,
-			PublicKey:   hex.EncodeToString(key),
-			ShopOrigin:  shopOrigin,
-			TrialEndsAt: time.Now().UTC().Add(trialDuration),
+			Slug:       login,
+			PublicKey:  hex.EncodeToString(key),
+			ShopOrigin: shopOrigin,
+		}
+		if pending {
+			tenant.Status = TenantStatusPending
+		} else {
+			tenant.TrialEndsAt = time.Now().UTC().Add(trialDuration)
 		}
 		if err := tx.Create(&tenant).Error; err != nil {
 			return err
@@ -146,6 +157,52 @@ func (s *Store) CreateTenantWithAdminFor(ctx context.Context, login, passwordHas
 		return nil
 	})
 	return result, err
+}
+
+// StartTrialOnVerification opens the trial window for a pending tenant once
+// its owner confirms the email. Idempotent and single-shot: a tenant that
+// already left pending (verified twice, paused, paid) keeps its current
+// status and trial end, so a replayed link cannot extend anything.
+func (s *Store) StartTrialOnVerification(ctx context.Context, userID uint, trialDuration time.Duration) error {
+	if trialDuration <= 0 {
+		trialDuration = 7 * 24 * time.Hour
+	}
+	return s.db.WithContext(ctx).Model(&Tenant{}).
+		Where("status = ?", TenantStatusPending).
+		Where("id = (?)", s.db.Model(&AdminUser{}).Select("tenant_id").Where("id = ?", userID)).
+		Updates(map[string]any{
+			"status":        "trial",
+			"trial_ends_at": time.Now().UTC().Add(trialDuration),
+		}).Error
+}
+
+// DeleteExpiredPendingTenants removes hosted signups that were never
+// confirmed within the retention window, freeing the capacity they held.
+// Returns how many tenants were removed.
+func (s *Store) DeleteExpiredPendingTenants(ctx context.Context, retention time.Duration) (int64, error) {
+	cutoff := time.Now().UTC().Add(-retention)
+	var removed int64
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var ids []uint
+		if err := tx.Model(&Tenant{}).
+			Where("status = ? AND created_at < ? AND id <> ?", TenantStatusPending, cutoff, DefaultTenantID).
+			Pluck("id", &ids).Error; err != nil {
+			return err
+		}
+		if len(ids) == 0 {
+			return nil
+		}
+		if err := tx.Where("tenant_id IN ?", ids).Delete(&AppSetting{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("tenant_id IN ?", ids).Delete(&AdminUser{}).Error; err != nil {
+			return err
+		}
+		res := tx.Where("id IN ?", ids).Delete(&Tenant{})
+		removed = res.RowsAffected
+		return res.Error
+	})
+	return removed, err
 }
 
 // PauseExpiredTrials flips trial tenants whose window has ended to paused.

@@ -77,9 +77,12 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Hosted signup creates a pending tenant: the trial window opens only
+	// when the email is confirmed (OnSignup installed). Self-hosted signup
+	// keeps its immediate 14-day trial.
 	trialDuration := 14 * 24 * time.Hour
-	if store.StrictTenantMode() {
-		trialDuration = 7 * 24 * time.Hour
+	if s.cfg.OnSignup != nil && store.StrictTenantMode() {
+		trialDuration = 0
 	}
 	tenant, err := s.store.CreateTenantWithAdminFor(r.Context(), req.Login, hash, req.ShopOrigin, trialDuration, s.cfg.AdmitSignup)
 	if err != nil {
@@ -92,19 +95,26 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if s.cfg.OnSignup != nil {
+		// The account stays pending when the mail cannot be delivered: the
+		// tenant is not rolled back (DB and SMTP are not atomic — a timeout
+		// can happen after the message was accepted), and the SPA offers a
+		// resend from the verification screen.
 		if err := s.cfg.OnSignup(r.Context(), s.store, tenant.AdminID, req.Login); err != nil {
-			writeError(w, http.StatusInternalServerError, err)
+			s.logger.Error("signup verification mail failed", "login", req.Login, "error", err)
+			writeJSON(w, http.StatusCreated, map[string]any{
+				"status":      "verification_required",
+				"publicKey":   tenant.Tenant.PublicKey,
+				"mailDelayed": true,
+			})
 			return
 		}
-	}
-
-	if s.cfg.OnSignup != nil && store.StrictTenantMode() {
-		writeJSON(w, http.StatusCreated, map[string]any{
-			"status":    "verification_required",
-			"publicKey": tenant.Tenant.PublicKey,
-			"trialEnds": tenant.Tenant.TrialEndsAt,
-		})
-		return
+		if store.StrictTenantMode() {
+			writeJSON(w, http.StatusCreated, map[string]any{
+				"status":    "verification_required",
+				"publicKey": tenant.Tenant.PublicKey,
+			})
+			return
+		}
 	}
 
 	// Log the admin in right away: the SPA lands on its own tenant.

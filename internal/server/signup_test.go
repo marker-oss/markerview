@@ -131,3 +131,34 @@ func TestPausedTenantGets402(t *testing.T) {
 		t.Fatal("admin route must not be gated by tenant status")
 	}
 }
+
+// TestPendingTenantServesNoPublicData proves an unconfirmed signup cannot go
+// live: its widget data answers 402 until the email is verified, and
+// verification opens the tenant up in the same store call the auth route uses.
+func TestPendingTenantServesNoPublicData(t *testing.T) {
+	restore := store.SetStrictTenantModeForTest(true)
+	defer restore()
+	s := newAuthTestServer(t)
+
+	ctx := context.Background()
+	created, err := s.store.CreateTenantWithAdminFor(ctx, "pending@example.com", "hash", "https://pending.example", 0, nil)
+	if err != nil {
+		t.Fatalf("signup: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/reviews?public_key="+created.Tenant.PublicKey, nil)
+	rec := httptest.NewRecorder()
+	s.handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusPaymentRequired {
+		t.Fatalf("pending widget status = %d, want 402", rec.Code)
+	}
+
+	if err := s.store.StartTrialOnVerification(ctx, created.AdminID, 7*24*time.Hour); err != nil {
+		t.Fatalf("verify: %v", err)
+	}
+	rec2 := httptest.NewRecorder()
+	s.handler().ServeHTTP(rec2, httptest.NewRequest(http.MethodGet, "/api/reviews?public_key="+created.Tenant.PublicKey, nil))
+	if rec2.Code == http.StatusPaymentRequired {
+		t.Fatal("verified tenant must serve public data")
+	}
+}

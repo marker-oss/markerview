@@ -314,7 +314,9 @@ func (s *Server) tenantScope(next http.Handler) http.Handler {
 				ctx = context.WithValue(ctx, tenantOriginsKey, origins)
 			}
 			ctx = store.WithTenant(ctx, tenant.ID)
-			if tenant.Status == "paused" {
+			// Pending (email unconfirmed) and paused tenants serve no public
+			// traffic: the widget must not go live before the owner confirms.
+			if tenant.Status == "paused" || tenant.Status == store.TenantStatusPending {
 				writeError(w, http.StatusPaymentRequired, errors.New("подписка приостановлена"))
 				return
 			}
