@@ -22,8 +22,10 @@ HTTP-сервер, админку, экспорт статических дан�
 мастер установки — сервис сам развернётся на VPS, включит HTTPS и покажет адрес
 админки.
 
+Скачайте готовый бинарник со страницы [последнего релиза](https://github.com/marker-oss/markerview/releases/latest), затем запустите мастер:
+
 ```sh
-curl -fsSL https://raw.githubusercontent.com/marker-oss/markerview/main/install.sh | sh
+chmod +x reviews
 ./reviews install
 ```
 
@@ -124,16 +126,10 @@ curl -fsSL https://raw.githubusercontent.com/marker-oss/markerview/main/install.
 или доработкой системы под ваш сценарий, напишите:
 [@pishite0suda](https://t.me/pishite0suda).
 
-### Шаг 1. Скачать установщик
+### Шаг 1. Скачать бинарник
 
-**Linux / macOS — одной командой** (сам определит ОС и архитектуру и скачает
-нужный бинарник в текущую папку):
-```sh
-curl -fsSL https://raw.githubusercontent.com/marker-oss/yakit-reviews-extension/main/install.sh | sh
-```
-
-**Вручную** — выберите файл под свою систему на странице
-[releases](https://github.com/marker-oss/yakit-reviews-extension/releases/latest):
+Выберите файл под свою систему на странице
+[releases](https://github.com/marker-oss/markerview/releases/latest):
 
 | ОС | Файл |
 |----|------|
@@ -145,15 +141,15 @@ curl -fsSL https://raw.githubusercontent.com/marker-oss/yakit-reviews-extension/
 
 Пример для Linux:
 ```sh
-curl -L -o reviews https://github.com/marker-oss/yakit-reviews-extension/releases/latest/download/reviews-linux-amd64
+curl -L -o reviews https://github.com/marker-oss/markerview/releases/latest/download/reviews-linux-amd64
 chmod +x reviews
 ```
 На Windows — скачайте `.exe` из таблицы и запускайте из PowerShell.
 
 > Нет готового релиза? Соберите бинарник из исходников (нужен Go 1.26+):
 > ```sh
-> git clone https://github.com/marker-oss/yakit-reviews-extension.git
-> cd yakit-reviews-extension && go build -o reviews ./cmd/reviews
+> git clone https://github.com/marker-oss/markerview.git
+> cd markerview && go build -o reviews ./cmd/reviews
 > ```
 
 ### Шаг 2. Подготовить требования (чеклист)
@@ -323,7 +319,7 @@ SSH-ключ), домены (сервис отзывов + origin магазин
 ### Вариант A — Docker (рекомендуется)
 
 ```sh
-git clone https://github.com/marker-oss/yakit-reviews-extension.git reviews
+git clone https://github.com/marker-oss/markerview.git reviews
 cd reviews
 
 # 1. Подготовьте конфигурацию
@@ -354,7 +350,7 @@ docker compose down            # остановить (том с данными 
 ### Вариант B — из исходников (без Docker)
 
 ```sh
-git clone https://github.com/marker-oss/yakit-reviews-extension.git reviews
+git clone https://github.com/marker-oss/markerview.git reviews
 cd reviews
 cp .env.example .env           # отредактируйте
 

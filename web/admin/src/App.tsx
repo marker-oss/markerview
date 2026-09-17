@@ -117,7 +117,7 @@ type VersionInfo = {
   releaseUrl: string
 }
 
-const UPDATE_DOCS_URL = 'https://github.com/marker-oss/yakit-reviews-extension#обслуживание'
+const UPDATE_DOCS_URL = 'https://github.com/marker-oss/markerview#обслуживание'
 const DISMISSED_KEY = 'reviews-update-dismissed'
 
 type Health = { tone: 'ok' | 'warn' | 'fail'; label: string }

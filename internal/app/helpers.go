@@ -15,7 +15,7 @@ import (
 )
 
 // latestReleaseURL is the feed the admin update-banner checks once a day.
-const latestReleaseURL = "https://api.github.com/repos/marker-oss/yakit-reviews-extension/releases/latest"
+const latestReleaseURL = "https://api.github.com/repos/marker-oss/markerview/releases/latest"
 
 func MarketplaceStatuses(cfg config.Config) []server.MarketplaceStatus {
 	wbConfigured := cfg.Marketplaces.WB.Token != ""

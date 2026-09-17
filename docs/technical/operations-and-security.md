@@ -29,7 +29,7 @@ reviews export --out web/reviews-data
 
 **Принятое направление:** согласованная контейнерная поставка и развёртывание по неизменяемому digest. Общие ресурсы должны происходить из того же снимка исходников, что и сервер; конкретный приватный pipeline не является частью OSS-инструкции.
 
-Legacy installer (`reviews install`, [`install.sh`](../../install.sh)) отложен и не удалён. Container-first направление не означает, что старый source/binary deploy уже выключен.
+Встроенный мастер `reviews install` остаётся доступен для self-hosted установки. Отдельный shell-bootstrap `install.sh` удалён; container-first направление не выключает source/binary deploy.
 
 ## Compose и постоянные данные
 

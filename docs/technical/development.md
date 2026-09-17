@@ -151,4 +151,4 @@ python3 -m http.server 18080 --bind 127.0.0.1 --directory web/reviews-widget
 
 **Open:** какой именно release-проверочный набор будет обязательным для свежего embedded admin; default proxy для frontend не утверждён. До решения используйте source-traced пути выше.
 
-Legacy `reviews install` и [`install.sh`](../../install.sh) пока не удалены, но installer-инвестиции отложены; новый contributor setup на них не опирается.
+`reviews install` остаётся встроенным мастером настройки бинаря. Отдельного shell-bootstrap `install.sh` больше нет; contributor setup на нём не зависит.
