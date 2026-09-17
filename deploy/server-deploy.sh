@@ -84,6 +84,10 @@ $public_domain {
 	file_server
 }
 EOF
+  mkdir -p /etc/caddy/sites
+  if ls /etc/caddy/sites/*.Caddyfile >/dev/null 2>&1; then
+    printf '\nimport /etc/caddy/sites/*.Caddyfile\n' >> "$SRC_DIR/.deploy/Caddyfile"
+  fi
   install -m 0644 "$SRC_DIR/.deploy/Caddyfile" /etc/caddy/Caddyfile
 }
 

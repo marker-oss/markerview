@@ -15,5 +15,6 @@ web/admin/dist
 docs
 *.md
 deploy/systemd
+/cloud
 testdata
 web/reviews-widget/test

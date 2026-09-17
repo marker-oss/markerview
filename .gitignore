@@ -24,5 +24,9 @@ docs/superpowers/specs/
 # Landing (markerview.ru): private — contains seller requisites and the public offer
 /landing/
 
+# Private cloud entrypoint and payment integration.
+/cloud/
+
 # SDD worktrees
 /.worktrees/
+/web/reviews-widget/reviews-data/
