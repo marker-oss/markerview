@@ -2,35 +2,39 @@ import { useEffect, useMemo, useState } from 'react'
 import { apiGet } from '../api'
 import { toast } from '../toast'
 
-type TenantInfo = { publicKey?: string }
+type TenantInfo = { publicKey?: string; dataScope?: string }
 
 export default function EmbedPanel() {
   const [baseUrl, setBaseUrl] = useState(window.location.origin)
   const [anchorSelector, setAnchorSelector] = useState('')
   const [publicKey, setPublicKey] = useState('')
+  const [dataScope, setDataScope] = useState('')
 
   useEffect(() => {
     apiGet<TenantInfo>('/admin/api/tenant')
-      .then((t) => setPublicKey(t.publicKey || ''))
+      .then((t) => {
+        setPublicKey(t.publicKey || '')
+        setDataScope(t.dataScope || '')
+      })
       .catch(() => {})
   }, [])
 
   const snippet = useMemo(() => {
     const base = baseUrl.replace(/\/$/, '')
     const config: Record<string, string> = {
-      dataBase: `${base}/reviews-data`,
+      dataBase: `${base}/reviews-data${dataScope ? `/${encodeURIComponent(dataScope)}` : ''}`,
       widgetJsUrl: `${base}/reviews-widget.js`,
       widgetCssUrl: `${base}/reviews-widget.css`,
       configBase: base,
     }
-    if (publicKey) config.publicKey = publicKey
+    if (publicKey && dataScope) config.publicKey = publicKey
     if (anchorSelector.trim()) config.anchorSelector = anchorSelector.trim()
     const json = JSON.stringify(config, null, 2).replace(/</g, '\\u003c')
     return `<script>
 window.REVIEWS_EMBED_CONFIG = ${json};
 </script>
 <script src="${base}/loader.js" async></script>`
-  }, [anchorSelector, baseUrl, publicKey])
+  }, [anchorSelector, baseUrl, dataScope, publicKey])
 
   const insecureBase = baseUrl.trim().startsWith('http://')
 

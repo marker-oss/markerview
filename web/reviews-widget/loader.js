@@ -29,7 +29,12 @@
       useShadowDom: true,
       debug: false,
     },
-    attrs.reviewsBase ? { dataBase: attrs.reviewsBase + "/reviews-data", configBase: attrs.reviewsBase } : {},
+    attrs.reviewsBase ? {
+      dataBase: attrs.reviewsBase.replace(/\/$/, "") + "/reviews-data",
+      configBase: attrs.reviewsBase,
+      widgetJsUrl: attrs.reviewsBase.replace(/\/$/, "") + "/reviews-widget.js",
+      widgetCssUrl: attrs.reviewsBase.replace(/\/$/, "") + "/reviews-widget.css",
+    } : {},
     attrs.reviewsPublicKey ? { publicKey: attrs.reviewsPublicKey } : {},
     attrs.reviewsAnchor ? { anchorSelector: attrs.reviewsAnchor } : {},
     window.REVIEWS_EMBED_CONFIG || {},
@@ -81,12 +86,21 @@
     return String(article).replace(/[\/\\ ]/g, "_");
   }
 
+  function tenantDataBase() {
+    var base = String(CFG.dataBase || "").replace(/\/$/, "");
+    var key = encodeURIComponent(CFG.publicKey || "");
+    if (key && !base.endsWith("/" + key)) {
+      return base + "/" + key;
+    }
+    return base;
+  }
+
   function bundleUrl(rawArticle) {
     var article = normalizeArticle(rawArticle);
     if (!article) {
       return "";
     }
-    return CFG.dataBase + "/by-article/" + encodeURIComponent(articleFileKey(article)) + ".json";
+    return tenantDataBase() + "/by-article/" + encodeURIComponent(articleFileKey(article)) + ".json";
   }
 
   function originFromURL(value) {
@@ -486,7 +500,7 @@
     if (linkIndexLoading) {
       return linkIndexLoading;
     }
-    var base = CFG.dataBase || "";
+    var base = tenantDataBase();
     var url = base.replace(/\/$/, "") + "/links.json";
     linkIndexLoading = fetch(url, { headers: { Accept: "application/json" } })
       .then(function (response) {

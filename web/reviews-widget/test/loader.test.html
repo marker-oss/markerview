@@ -38,6 +38,9 @@
   eq("normalizeArticle trim", I.normalizeArticle("  107 "), "107");
   eq("articleFileKey space", I.articleFileKey("a b/c"), "a_b_c");
   eq("bundleUrl", I.bundleUrl("3467/Белый"), I.cfg.dataBase + "/by-article/3467.json");
+  I.cfg.publicKey = "tenant-key";
+  eq("bundleUrl includes tenant public key", I.bundleUrl("3467/Белый"), I.cfg.dataBase + "/tenant-key/by-article/3467.json");
+  I.cfg.publicKey = "";
   eq("reviewsUrl full feed", new URL(I.reviewsUrl("")).pathname + new URL(I.reviewsUrl("")).search, "/api/reviews?sort=newest&limit=24");
   eq("reviewsUrl context", new URL(I.reviewsUrl("homepage")).pathname + new URL(I.reviewsUrl("homepage")).search, "/api/reviews?context=homepage&sort=newest&limit=24");
 

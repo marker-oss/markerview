@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>sections order test</title>
+<link rel="stylesheet" href="/reviews-widget.css">
+<style>body{margin:0;padding:16px;font:14px system-ui}</style>
+</head>
+<body>
+<section id="a" class="reviews-widget"></section>
+<section id="b" class="reviews-widget" style="margin-top:24px"></section>
+<script>
+fetch("/reviews-widget.js").then(r=>r.text()).then(t=>{
+  const s=document.createElement("script"); s.textContent=t; document.head.appendChild(s);
+  const base={ theme:{accent:"#1677ff",text:"#0f2248",muted:"#62708d",panel:"#fff",border:"#dfe3eb",star:"#ffb800"}, typography:{inheritSite:false,radius:12,density:"comfortable"}, visibility:{photos:true,sellerAnswers:true,prosCons:true,marketplaceBadges:true,ratingDistribution:true,videoRail:true,filters:true,questions:false}, defaults:{minRating:0,requireText:false,marketplace:"all",initialSort:"newest"} };
+  // default order
+  ReviewsWidget.mount(document.querySelector("#a"),{reviews:ReviewsWidget.sampleReviews,productName:"Дефолтный порядок",config:{...base,layout:{mode:"list",columns:2,pageSize:3,sections:["summary","media","filters","list","form"]}}});
+  // custom order: form -> list -> filters -> summary ; media hidden
+  ReviewsWidget.mount(document.querySelector("#b"),{reviews:ReviewsWidget.sampleReviews,productName:"Кастомный порядок",config:{...base,layout:{mode:"list",columns:2,pageSize:3,sections:["form","list","filters","summary"]}}});
+});
+</script>
+</body></html>
