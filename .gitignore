@@ -19,6 +19,8 @@ coverage.out
 
 # Private working notes (plans, specs, research) — never published
 docs/superpowers/
+/docs/product/
+/ROADMAP.md
 
 # Landing (markerview.ru): private — contains seller requisites and the public offer
 /landing/

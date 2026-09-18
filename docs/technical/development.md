@@ -92,7 +92,7 @@ cp -a web/reviews-widget/. "$tmp/static/"
 
 ### Проверка через контейнер
 
-`docker compose up --build` — существующая команда, но **не безопасный изолированный smoke по умолчанию**: Compose загружает локальный `.env`, публикует порт на всех интерфейсах и использует постоянные тома. Выполняйте её только в отдельном тестовом проекте с подготовленным окружением; контейнерные данные описаны в [эксплуатации](operations-and-security.md).
+`docker compose up --build` — существующая команда, но **не безопасный изолированный smoke по умолчанию**: Compose загружает локальный `.env` и использует постоянные тома. Выполняйте её только в отдельном тестовом проекте с подготовленным окружением; контейнерные данные описаны в [эксплуатации](operations-and-security.md).
 
 ## CLI для локальной проверки
 
@@ -101,7 +101,6 @@ cp -a web/reviews-widget/. "$tmp/static/"
 ```text
 reviews migrate
 reviews admin reset-password --login LOGIN --password PASSWORD
-reviews install
 reviews sync --once [--marketplace wb|ym|ozon]
 reviews serve [--addr 127.0.0.1:8080] [--with-sync]
 reviews discover-site-urls
@@ -150,5 +149,3 @@ python3 -m http.server 18080 --bind 127.0.0.1 --directory web/reviews-widget
 **Accepted target (не реализовано):** общая OSS App и явный private overlay для Cloud без замены Core-файла; pinned Core SHA и staged same-Go-module build. Не проектируйте plugin framework или npm registry.
 
 **Open:** какой именно release-проверочный набор будет обязательным для свежего embedded admin; default proxy для frontend не утверждён. До решения используйте source-traced пути выше.
-
-`reviews install` остаётся встроенным мастером настройки бинаря. Отдельного shell-bootstrap `install.sh` больше нет; contributor setup на нём не зависит.

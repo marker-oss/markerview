@@ -1,9 +1,9 @@
 #!/bin/sh
-# Reviews auto-update: pull new image, health-check, roll back on failure.
-# Standalone copy for manual installs; the installer embeds the same script
-# (internal/installer/render.go, keep them in sync) and runs it daily via
-# reviews-update.timer. Usage: set REVIEWS_COMPOSE_DIR to the directory with
-# docker-compose.yml (default /srv/reviews-src) and run from cron/systemd.
+# Reviews image auto-update: pull a configured remote image, health-check, and
+# roll back on failure. This does not update the repository's source-build
+# docker-compose.yml. Use only with a Compose override that names a remote image;
+# set REVIEWS_COMPOSE_DIR to that Compose directory (default /srv/reviews-src)
+# and run from cron/systemd.
 set -eu
 
 DIR="${REVIEWS_COMPOSE_DIR:-/srv/reviews-src}"

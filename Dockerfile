@@ -7,6 +7,7 @@ WORKDIR /web/admin
 COPY web/admin/package.json web/admin/package-lock.json ./
 RUN npm ci
 COPY web/admin ./
+COPY web/reviews-widget/assets ./../reviews-widget/assets
 RUN npm run build
 
 # ---- builder ----

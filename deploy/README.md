@@ -1,213 +1,99 @@
-# Deploy
+# Deploy with Docker Compose
 
-This project is intended to run on a small VPS as one Go binary plus static
-files served by Caddy.
+Docker Compose is the supported self-hosted deployment path. The current
+Compose file builds the image from a source checkout; it does not pull a
+published registry image.
 
-## Install Wizard
+## Prerequisites
 
-The easiest install path is the local TUI wizard:
+- A Linux host with Docker and the Compose plugin.
+- A persistent backup destination outside the Docker host/volumes.
+- For production, a domain such as `reviews.myshop.example` with an A record
+  pointing to the server, and inbound ports 80/443 for a reverse proxy.
+- The shop origin, such as `https://myshop.example`, for CORS and product links.
+- Credentials for the marketplaces you enable. Keep them out of Git and public
+  logs. Wildberries requires a personal token for reviews/questions; Yandex
+  Market requires Business ID plus Api-Key or OAuth; Ozon requires Client-Id
+  and Api-Key and is disabled by default. Ozon review access requires Premium
+  Plus and the `Reviews` role; also grant `Products` so reviews can be mapped by
+  `offer_id`, and optionally `Questions`.
 
-```sh
-reviews install
-```
+The [user guide](../docs/user-guide.md#docker-подготовка-к-запуску) has detailed
+token and marketplace requirements.
 
-Enter the reviews domain, shop origin, VPS SSH access, first admin credentials,
-and marketplace credentials, then let the installer run the setup for you. The
-manual SSH commands below are the transparent fallback.
-
-Before starting the wizard, prepare a fresh Linux VPS, its public IP, SSH port,
-root/sudo login, SSH password or private key, a reviews domain pointing to that
-IP, the shop origin, and marketplace credentials. The user should not need to
-open an SSH session manually; the wizard will use those access details to run
-the setup. Wizard v1 targets fresh Ubuntu/Debian servers and deploys through
-Docker Compose behind Caddy.
-
-## DNS
-
-Point `reviews.myshop.example` to the VPS IP address. Caddy will request and renew
-TLS certificates automatically.
-
-## VPS Layout
-
-```text
-/srv/reviews/
-  reviews
-  reviews.db
-  .env
-  data/
-    product-links.json
-  web/
-    loader.js
-    reviews-widget.js
-    reviews-widget.css
-    reviews-data/
-      index.json
-      by-article/*.json
-```
-
-## First-Time Server Setup
-
-Install Caddy and create the project directories:
+## Start the service
 
 ```sh
-sudo mkdir -p /srv/reviews/data /srv/reviews/web/reviews-data
-sudo chown -R "$USER":"$USER" /srv/reviews
-sudo cp deploy/Caddyfile /etc/caddy/Caddyfile
-sudo systemctl reload caddy
+git clone https://github.com/marker-oss/markerview.git reviews
+cd reviews
+cp .env.example .env
+# Edit .env before continuing.
+docker compose up -d --build
+curl --fail http://127.0.0.1:8080/healthz
 ```
 
-Copy service files if you want systemd-managed hourly sync/export:
+At minimum, configure the shop origin and only the marketplaces whose
+credentials are present. The service runs migrations on startup and its default
+command, `serve --with-sync`, runs periodic review sync in the same container.
 
-```sh
-sudo cp deploy/systemd/reviews.service /etc/systemd/system/
-sudo cp deploy/systemd/reviews-sync.service /etc/systemd/system/
-sudo cp deploy/systemd/reviews-sync.timer /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now reviews.service
-sudo systemctl enable --now reviews-sync.timer
+`.env.example` enables `REVIEWS_INSECURE_COOKIES=1` for local HTTP preview. In
+production behind HTTPS, remove that value or leave it empty so admin session
+cookies remain `Secure`. `docker compose config` expands `.env`; do not paste
+its output into tickets or logs when it contains real credentials.
+
+The application listens on `127.0.0.1:8080` on the host. Open
+`http://127.0.0.1:8080/admin` locally to create the first administrator. For a
+remote production host, complete HTTPS setup first and use
+`https://reviews.myshop.example/admin`.
+
+## DNS and HTTPS
+
+Point `reviews.myshop.example` to the server before starting Caddy. A minimal
+`/etc/caddy/Caddyfile` for the Compose service is:
+
+```caddyfile
+reviews.myshop.example {
+    reverse_proxy 127.0.0.1:8080
+}
 ```
 
-## Environment
+After saving it, run `sudo systemctl reload caddy`.
 
-Create `/srv/reviews/.env` on the VPS. Minimal SQLite example:
+Caddy requests and renews the TLS certificate automatically. Keep application
+port 8080 bound to loopback; expose only the reverse proxy on 80/443. Set
+`REVIEWS_PUBLIC_DOMAIN=reviews.myshop.example` and
+`REVIEWS_SHOP_ORIGIN=https://myshop.example` in the application `.env`.
 
-```sh
-REVIEWS_DB_DRIVER=sqlite
-REVIEWS_DB_DSN=./reviews.db
-REVIEWS_SITE_PRODUCT_LINKS=./data/product-links.json
-REVIEWS_SITE_PRODUCT_URL_TEMPLATE=https://myshop.example/search?query={seller_article_url}
-REVIEWS_WB_ENABLED=true
-REVIEWS_WB_TOKEN=...
-REVIEWS_YM_ENABLED=false
-REVIEWS_OZON_ENABLED=false
-```
-
-## Local Build
+## Operations
 
 ```sh
-./deploy/build.sh ./dist/reviews-linux-amd64
-```
-
-## Run with Docker
-
-Prerequisites: Docker with the Compose plugin.
-
-1. Copy and edit configuration:
-
-   ```sh
-   cp .env.example .env
-   # fill in marketplace tokens, then enable the marketplaces you want to sync
-   ```
-
-   Keep `REVIEWS_INSECURE_COOKIES=1` only for local HTTP preview. Remove it or
-   leave it empty when the admin panel is served over HTTPS.
-
-2. Start the service (builds the image on first run):
-
-   ```sh
-   docker compose up -d --build
-   ```
-
-3. Verify it is healthy:
-
-   ```sh
-   curl -fsS http://localhost:8080/healthz
-   ```
-
-The server runs database migrations on startup and, because the image's default
-command is `serve --with-sync`, it also runs review sync on `REVIEWS_SYNC_INTERVAL`
-inside the same process, so no systemd timer is required. The SQLite database
-persists in the `reviews-data` named volume.
-
-Note: `docker compose config` expands values from `.env` into its output. Avoid
-pasting that output into logs or tickets when real marketplace tokens are set.
-
-To run a one-off sync manually:
-
-```sh
+docker compose logs -f reviews
+docker compose restart reviews
 docker compose run --rm reviews sync --once
+docker compose down            # named volumes are preserved
 ```
 
-## Server-Pull Deploy
+Do not use `docker compose down -v` unless you intentionally want to delete
+application data. SQLite, uploaded media and product links live in the
+`reviews-data` volume; published widget data lives in `reviews-exports`.
+Back up all of them. The complete backup and restore contract is documented in
+[operations and security](../docs/technical/operations-and-security.md#backup-и-restore).
 
-For repeatable deploys where the VPS pulls from GitHub and builds in place,
-use a source checkout at `/srv/reviews-src` and keep runtime state in
-`/srv/reviews`.
-
-One-time bootstrap on the VPS:
+To update the source-built deployment:
 
 ```sh
-scp deploy/server-bootstrap.sh your-vps:/tmp/server-bootstrap.sh
-ssh your-vps 'sh /tmp/server-bootstrap.sh'
+git pull
+docker compose up -d --build
+curl --fail http://127.0.0.1:8080/healthz
 ```
 
-Deploy the latest commit of a branch:
-
-```sh
-ssh your-vps 'DEPLOY_REF=main sh /srv/reviews-src/deploy/server-deploy.sh'
-```
-
-For the first run, when `/srv/reviews-src` does not exist yet, copy the deploy
-script once and pass the repository URL:
-
-```sh
-scp deploy/server-deploy.sh your-vps:/tmp/server-deploy.sh
-ssh your-vps 'REPO_URL=git@github.com:your-org/your-repo.git DEPLOY_REF=main sh /tmp/server-deploy.sh'
-```
-
-The deploy script does:
-
-- `git fetch` / hard reset to `origin/$DEPLOY_REF`;
-- server-side Go build;
-- install binary, widget assets, and product links into `/srv/reviews`;
-- run `migrate`, `sync --once`, `export`;
-- install/restart `reviews.service` so dynamic helpers such as `/media` work;
-- reload Caddy if it is active.
-
-## Manual Ship
-
-```sh
-scp ./dist/reviews-linux-amd64 vps:/srv/reviews/reviews
-scp web/reviews-widget/loader.js \
-    web/reviews-widget/reviews-widget.js \
-    web/reviews-widget/reviews-widget.css \
-    vps:/srv/reviews/web/
-scp data/product-links.json vps:/srv/reviews/data/
-```
-
-On the VPS:
-
-```sh
-cd /srv/reviews
-chmod +x ./reviews
-./reviews migrate
-./reviews export --out ./web/reviews-data
-sudo systemctl reload caddy
-```
+The supplied `auto-update.sh` pulls a configured remote image. It does not
+update this source-build Compose deployment; use the commands above.
 
 ## Yandex Tag Manager
 
-After deploy, add a Custom HTML tag firing on page view / DOM Ready / all pages:
-
-```html
-<script>
-window.REVIEWS_EMBED_CONFIG = {
-  dataBase: "https://reviews.myshop.example/reviews-data",
-  widgetJsUrl: "https://reviews.myshop.example/reviews-widget.js",
-  widgetCssUrl: "https://reviews.myshop.example/reviews-widget.css",
-  debug: false
-};
-</script>
-<script src="https://reviews.myshop.example/loader.js"></script>
-```
-
-## GitHub Actions Deploy
-
-The deploy workflow expects these repository secrets:
-
-- `VPS_HOST`
-- `VPS_USER`
-- `VPS_SSH_KEY`
-- `VPS_PORT` (optional, defaults to `22`)
-
-Run the `Deploy VPS` workflow manually from GitHub Actions.
+After deployment, open **Admin → Embed** and copy the generated snippet. Add it
+as a Custom HTML tag firing on DOM Ready / all pages, connect the Tag Manager
+container to the shop, and publish a container version. Saving the tag without
+publishing does not put it on the site. The widget and its assets must use the
+HTTPS reviews domain to avoid mixed-content blocking.
