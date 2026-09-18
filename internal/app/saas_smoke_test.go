@@ -37,39 +37,34 @@ func TestDispatchSyncIsolatedPerTenant(t *testing.T) {
 
 	// Each dispatch builds a fresh blocking adapter; both stay in-flight
 	// until the test releases them.
-	var adapters []*blockingAdapter
-	adapterMu := make(chan struct{}, 1)
+	adapters := make(chan *blockingAdapter, 2)
 	o.newAdapter = func(cfg config.Config, id string, _ *apihttp.Executor) (marketplace.Adapter, error) {
 		a := newBlockingAdapter(id)
-		adapters = append(adapters, a)
-		adapterMu <- struct{}{}
+		adapters <- a
 		return a, nil
 	}
-	waitAdapter := func(i int) *blockingAdapter {
-		for len(adapters) <= i {
-			<-adapterMu
-		}
-		return adapters[i]
-	}
 
-	first, err := o.DispatchSync(ctxA, []string{"wb"}, nil)
+	doneA, doneB := make(chan struct{}), make(chan struct{})
+	first, err := dispatchSync(t, o, ctxA, []string{"wb"}, func() { close(doneA) })
 	if err != nil || len(first.Started) != 1 {
 		t.Fatalf("dispatch A = %+v, err=%v", first, err)
 	}
-	<-waitAdapter(0).entered
+	adapterA := <-adapters
+	<-adapterA.entered
 
 	// Tenant B must NOT be blocked by A's in-flight WB sync.
-	second, err := o.DispatchSync(ctxB, []string{"wb"}, nil)
+	second, err := dispatchSync(t, o, ctxB, []string{"wb"}, func() { close(doneB) })
 	if err != nil {
 		t.Fatalf("dispatch B: %v", err)
 	}
 	if len(second.Started) != 1 || second.Started[0] != "wb" {
 		t.Fatalf("dispatch B = %+v, want Started:[wb] — per-tenant slot must not collide", second)
 	}
-	<-waitAdapter(1).entered
+	adapterB := <-adapters
+	<-adapterB.entered
 
 	// The same tenant's second dispatch must report busy.
-	third, err := o.DispatchSync(ctxB, []string{"wb"}, nil)
+	third, err := dispatchSync(t, o, ctxB, []string{"wb"}, nil)
 	if err != nil {
 		t.Fatalf("dispatch B2: %v", err)
 	}
@@ -79,8 +74,10 @@ func TestDispatchSyncIsolatedPerTenant(t *testing.T) {
 
 	// Unbind both syncs and verify each tenant's sync_runs were stamped with
 	// the right tenant: A sees its own run (and only its own), B sees its own.
-	close(waitAdapter(0).unblock)
-	close(waitAdapter(1).unblock)
+	close(adapterA.unblock)
+	close(adapterB.unblock)
+	<-doneA
+	<-doneB
 
 	runsA, err := db.RecentSyncRuns(ctxA, 10)
 	if err != nil {

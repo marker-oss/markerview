@@ -17,6 +17,7 @@ import (
 	"reviews/internal/marketplace"
 	"reviews/internal/marketplace/apihttp"
 	"reviews/internal/marketplace/wbtoken"
+	"reviews/internal/server"
 	"reviews/internal/store"
 	"reviews/internal/syncer"
 )
@@ -30,6 +31,15 @@ func newOpsTestStore(t *testing.T) *store.Store {
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
+	sqlDB, err := db.DB().DB()
+	if err != nil {
+		t.Fatalf("get sql database: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := sqlDB.Close(); err != nil {
+			t.Errorf("close store: %v", err)
+		}
+	})
 	if err := db.Migrate(context.Background()); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
@@ -43,7 +53,30 @@ func testLogger() *slog.Logger {
 func newOps(t *testing.T, base config.Config) (*MarketplaceOperations, *store.Store) {
 	t.Helper()
 	db := newOpsTestStore(t)
-	return NewMarketplaceOperations(context.Background(), db, base, testLogger(), apihttp.NewExecutor(), syncer.NewCoordinator()), db
+	return NewMarketplaceOperations(t.Context(), db, base, testLogger(), apihttp.NewExecutor(), syncer.NewCoordinator()), db
+}
+
+// Wait before the store and TempDir cleanups, including when a test fails early.
+// The test context cancels blocked adapters before cleanup begins.
+func dispatchSync(t *testing.T, o *MarketplaceOperations, ctx context.Context, requested []string, after func()) (server.SyncDispatch, error) {
+	t.Helper()
+	done := make(chan struct{})
+	dispatch, err := o.DispatchSync(ctx, requested, func() {
+		defer close(done)
+		if after != nil {
+			after()
+		}
+	})
+	if err == nil {
+		t.Cleanup(func() {
+			select {
+			case <-done:
+			case <-time.After(5 * time.Second):
+				t.Error("background sync did not finish before store cleanup")
+			}
+		})
+	}
+	return dispatch, err
 }
 
 // wbJWT builds an unsigned JWT-shaped fixture; validation is metadata-only
@@ -278,7 +311,7 @@ func TestMarketplaceOperationsDispatchSyncStartedReturnsBeforeBackgroundComplete
 	}
 	o.base.Marketplaces.WB.Token = personalWBToken(t)
 
-	dispatch, err := o.DispatchSync(context.Background(), []string{"wb"}, nil)
+	dispatch, err := dispatchSync(t, o, context.Background(), []string{"wb"}, nil)
 	if err != nil {
 		t.Fatalf("DispatchSync: %v", err)
 	}
@@ -304,13 +337,13 @@ func TestMarketplaceOperationsDispatchSyncBusyOnSecondCallMakesNoCollectorCall(t
 		return wbAdapter, nil
 	}
 
-	first, err := o.DispatchSync(context.Background(), []string{"wb"}, nil)
+	first, err := dispatchSync(t, o, context.Background(), []string{"wb"}, nil)
 	if err != nil || len(first.Started) != 1 {
 		t.Fatalf("first dispatch = %+v, err=%v", first, err)
 	}
 	<-wbAdapter.entered // first goroutine is now mid-flight
 
-	second, err := o.DispatchSync(context.Background(), []string{"wb"}, nil)
+	second, err := dispatchSync(t, o, context.Background(), []string{"wb"}, nil)
 	if err != nil {
 		t.Fatalf("second DispatchSync: %v", err)
 	}
@@ -339,12 +372,12 @@ func TestMarketplaceOperationsDispatchSyncYMStartsWhileWBBlocked(t *testing.T) {
 		return ymAdapter, nil
 	}
 
-	if _, err := o.DispatchSync(context.Background(), []string{"wb"}, nil); err != nil {
+	if _, err := dispatchSync(t, o, context.Background(), []string{"wb"}, nil); err != nil {
 		t.Fatalf("dispatch wb: %v", err)
 	}
 	<-wbAdapter.entered
 
-	dispatch, err := o.DispatchSync(context.Background(), []string{"ym"}, nil)
+	dispatch, err := dispatchSync(t, o, context.Background(), []string{"ym"}, nil)
 	if err != nil {
 		t.Fatalf("dispatch ym: %v", err)
 	}
@@ -364,7 +397,7 @@ func TestMarketplaceOperationsDispatchSyncReleasesAfterCollectorError(t *testing
 	}
 
 	done := make(chan struct{})
-	if _, err := o.DispatchSync(context.Background(), []string{"wb"}, func() { close(done) }); err != nil {
+	if _, err := dispatchSync(t, o, context.Background(), []string{"wb"}, func() { close(done) }); err != nil {
 		t.Fatalf("DispatchSync: %v", err)
 	}
 	select {
@@ -375,7 +408,7 @@ func TestMarketplaceOperationsDispatchSyncReleasesAfterCollectorError(t *testing
 
 	// The coordinator slot must be free again even though the collector run
 	// failed, proving release() ran via defer regardless of the error.
-	second, err := o.DispatchSync(context.Background(), []string{"wb"}, nil)
+	second, err := dispatchSync(t, o, context.Background(), []string{"wb"}, nil)
 	if err != nil {
 		t.Fatalf("second DispatchSync: %v", err)
 	}
@@ -400,7 +433,7 @@ func TestMarketplaceOperationsDispatchSyncRejectsInvalidExplicitAndLaunchesNothi
 			calls := &countingFactory{}
 			o.newAdapter = calls.build
 
-			dispatch, err := o.DispatchSync(context.Background(), []string{tc.id}, nil)
+			dispatch, err := dispatchSync(t, o, context.Background(), []string{tc.id}, nil)
 			if err == nil {
 				t.Fatalf("DispatchSync(%s) = nil error, want rejection", tc.id)
 			}
@@ -434,7 +467,7 @@ func TestMarketplaceOperationsDispatchSyncEmptyRequestSkipsInvalidEnabled(t *tes
 		}
 	}
 
-	dispatch, err := o.DispatchSync(context.Background(), nil, nil)
+	dispatch, err := dispatchSync(t, o, context.Background(), nil, nil)
 	if err != nil {
 		t.Fatalf("DispatchSync(nil): %v", err)
 	}
@@ -478,7 +511,7 @@ func TestMarketplaceOperationsDispatchSyncAfterCallbackRunsOnceForWholeBatch(t *
 		close(done)
 	}
 
-	dispatch, err := o.DispatchSync(context.Background(), []string{"wb", "ym"}, after)
+	dispatch, err := dispatchSync(t, o, context.Background(), []string{"wb", "ym"}, after)
 	if err != nil || len(dispatch.Started) != 2 {
 		t.Fatalf("dispatch = %+v, err=%v", dispatch, err)
 	}
