@@ -4,7 +4,7 @@
 
 Отзывы с Ozon, Wildberries и Яндекс Маркета — в настраиваемом виджете вашего интернет-магазина. Подключите источники, сопоставьте товары и управляйте публикацией из одной админки.
 
-[![CI](https://github.com/marker-oss/markerview/actions/workflows/ci.yml/badge.svg)](https://github.com/marker-oss/markerview/actions/workflows/ci.yml) [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue)](LICENSE) [![GitHub release](https://img.shields.io/github/v/release/marker-oss/markerview)](https://github.com/marker-oss/markerview/releases)
+[![CI](https://github.com/marker-oss/markerview/actions/workflows/ci.yml/badge.svg)](https://github.com/marker-oss/markerview/actions/workflows/ci.yml) [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue)](LICENSE) [![GitHub release](https://img.shields.io/github/v/release/marker-oss/markerview)](https://github.com/marker-oss/markerview/releases) [![Поддержать на Boosty](https://img.shields.io/badge/Boosty-Поддержать-F15F2C?logo=boosty&logoColor=white)](https://boosty.to/markerview)
 
 [**MarkerView Cloud**](https://markerview.ru) · [**Запустить у себя**](#быстрый-старт) · [**Руководство**](docs/user-guide.md) · [**Планы развития**](#планы-развития)
 
@@ -98,6 +98,7 @@ curl --fail http://127.0.0.1:8080/healthz
 - [Эксплуатация и безопасность](docs/technical/operations-and-security.md) — хранение, резервные копии и восстановление.
 - [Для разработчиков](docs/technical/README.md) — архитектура, API и контракты; [локальная сборка и проверки](docs/technical/development.md).
 - [Ошибки и предложения](https://github.com/marker-oss/markerview/issues) · [Pull requests](https://github.com/marker-oss/markerview/pulls).
+- [Поддержать проект](SUPPORT.md) — Boosty и другие способы помочь развитию MarkerView.
 
 Техническая основа: Go, SQLite или PostgreSQL, React-админка и JavaScript-виджет. Сборка из исходников без Docker описана для разработки, а не как второй пользовательский способ установки.
 
