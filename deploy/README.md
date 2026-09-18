@@ -90,6 +90,41 @@ curl --fail http://127.0.0.1:8080/healthz
 The supplied `auto-update.sh` pulls a configured remote image. It does not
 update this source-build Compose deployment; use the commands above.
 
+## Maintainer self-hosted stand
+
+The upstream repository's `CI` workflow deploys the existing systemd stand
+automatically after a successful push to `main`. This is separate from user
+Docker Compose installations; it does not update other self-hosted servers.
+Manual `workflow_dispatch` on `main` is available for redeploying the current
+revision. Pull requests, other branches and superseded revisions do not deploy.
+
+CI rebuilds the admin SPA and embedded widget from source before testing and
+compiling. Its deploy job downloads that run's Linux artifact, verifies the
+pinned SSH host key, uploads the binary and checks its SHA-256 on the server.
+Deployments are serialized without cancelling an installation in progress.
+
+Configure the GitHub `production` environment for the `main` branch only:
+
+- `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`: SSH access to the existing stand.
+- `VPS_KNOWN_HOSTS`: a trusted OpenSSH known-hosts entry, verified out of band;
+  do not replace host verification with an unchecked `ssh-keyscan` during CI.
+- `VPS_PUBLIC_URL`: HTTPS base URL used for the final public health/asset checks.
+
+The stand must already run `reviews.service` from `/srv/reviews/reviews` and
+expose its database configuration in the service environment. The installer
+requires root, Python 3, `flock`, `curl` and `pg_dump` for PostgreSQL. It keeps
+the old executable and a consistent database snapshot under
+`/srv/reviews/backups`, atomically replaces the binary and restarts only
+`reviews.service`. Local restart/health failures restore the old executable
+and fail the job. Database backups are never restored automatically: review
+migration compatibility before shipping schema changes. Keep backups private
+and include them in the operator's off-host backup/retention policy.
+
+The final Actions step checks HTTPS health and byte-for-byte equality of the
+served widget JS/CSS against the deployed commit. A public verification failure
+fails the job without automatically undoing a locally healthy deployment.
+No proxy configuration, `.env`, Cloud service or export data is replaced.
+
 ## Yandex Tag Manager
 
 After deployment, open **Admin → Embed** and copy the generated snippet. Add it

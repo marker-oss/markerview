@@ -6,21 +6,121 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/admin/package-lock.json
+      - name: Install frontend dependencies
+        working-directory: web/admin
+        run: npm ci
+      - name: Build embedded admin and widget
+        working-directory: web/admin
+        run: ./build-embed.sh
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
       - name: Test
         run: go test ./...
+      - name: Test artifact installation and rollback
+        run: python3 -m unittest discover -s deploy -p 'test_*.py'
       - name: Build Linux artifact
+        env:
+          VERSION: ${{ github.sha }}
         run: ./deploy/build.sh ./dist/reviews-linux-amd64
       - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
           name: reviews-linux-amd64
           path: ./dist/reviews-linux-amd64
+          if-no-files-found: error
+
+  deploy:
+    needs: test
+    if: github.repository == 'marker-oss/markerview' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    concurrency:
+      group: self-hosted-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: reviews-linux-amd64
+          path: dist
+      - name: Skip superseded revisions
+        id: revision
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          head=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')
+          if [ "$head" = "$GITHUB_SHA" ]; then
+            echo 'current=true' >> "$GITHUB_OUTPUT"
+          else
+            echo "Skipping superseded revision $GITHUB_SHA"
+          fi
+      - name: Configure verified SSH connection
+        if: steps.revision.outputs.current == 'true'
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          test -n "$VPS_SSH_KEY"
+          test -n "$VPS_KNOWN_HOSTS"
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy_key
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/deploy_key ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<'EOF'
+          Host *
+            BatchMode yes
+            IdentityFile ~/.ssh/deploy_key
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+            ConnectTimeout 15
+            ServerAliveInterval 15
+            ServerAliveCountMax 4
+          EOF
+      - name: Install artifact and verify self-hosted service
+        if: steps.revision.outputs.current == 'true'
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          test -n "$VPS_HOST"
+          test -n "$VPS_USER"
+          chmod 0755 dist/reviews-linux-amd64
+          target="$VPS_USER@$VPS_HOST"
+          remote=$(ssh "$target" "mktemp -d /srv/reviews/.deploy-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-XXXXXX")
+          trap 'ssh "$target" "rm -rf -- $remote"' EXIT
+          scp dist/reviews-linux-amd64 deploy/install-artifact.sh "$target:$remote/"
+          checksum=$(sha256sum dist/reviews-linux-amd64 | cut -d ' ' -f 1)
+          ssh "$target" "sh '$remote/install-artifact.sh' '$remote/reviews-linux-amd64' '$GITHUB_SHA' '$checksum'"
+      - name: Verify public widget assets
+        if: steps.revision.outputs.current == 'true'
+        env:
+          VPS_PUBLIC_URL: ${{ secrets.VPS_PUBLIC_URL }}
+        run: |
+          test -n "$VPS_PUBLIC_URL"
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 30 --retry 3 "$VPS_PUBLIC_URL/healthz"
+          for asset in loader.js reviews-widget.js reviews-widget.css; do
+            curl --fail --silent --show-error --connect-timeout 10 --max-time 30 --retry 3 "$VPS_PUBLIC_URL/$asset?revision=$GITHUB_SHA" -o "$RUNNER_TEMP/$asset"
+            cmp "web/reviews-widget/$asset" "$RUNNER_TEMP/$asset"
+          done
+      - name: Remove deployment credentials
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

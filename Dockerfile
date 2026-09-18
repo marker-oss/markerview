@@ -7,8 +7,9 @@ WORKDIR /web/admin
 COPY web/admin/package.json web/admin/package-lock.json ./
 RUN npm ci
 COPY web/admin ./
+COPY web/reviews-widget/loader.js web/reviews-widget/reviews-widget.js web/reviews-widget/reviews-widget.css ./../reviews-widget/
 COPY web/reviews-widget/assets ./../reviews-widget/assets
-RUN npm run build
+RUN mkdir -p /internal/server && sh build-embed.sh
 
 # ---- builder ----
 # Runs on the native build platform and cross-compiles to the target arch
@@ -22,7 +23,9 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-COPY --from=web /web/admin/dist ./internal/server/admin_dist
+RUN rm -rf internal/server/admin_dist internal/server/widget_dist
+COPY --from=web /internal/server/admin_dist ./internal/server/admin_dist
+COPY --from=web /internal/server/widget_dist ./internal/server/widget_dist
 ARG VERSION=dev
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build \
     -trimpath -ldflags "-s -w -X main.version=${VERSION}" \

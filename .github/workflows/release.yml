@@ -18,6 +18,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/admin/package-lock.json
+      - name: Build embedded web assets
+        working-directory: web/admin
+        run: |
+          npm ci
+          sh build-embed.sh
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
