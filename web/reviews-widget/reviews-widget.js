@@ -710,13 +710,17 @@
       <div class="rw-qa-submit" data-role="qa-submit"></div>
     `;
 
+    const attribution = document.createElement("div");
+    attribution.className = "rw-attribution";
+    attribution.innerHTML = 'создано при помощи <a href="https://markerview.ru/" target="_blank" rel="noopener noreferrer">markerview</a>';
+
     // Header first, then the flat section children of the root in config order.
     fragment.appendChild(header);
     const bySection = { summary: overview, player, media, filters: filterBar, list: listWrap, form: submitForm };
     for (const id of config.layout.sections) {
       fragment.appendChild(bySection[id]);
     }
-    fragment.append(questionsPanel, reviewsDialog, viewer, formModal);
+    fragment.append(questionsPanel, attribution, reviewsDialog, viewer, formModal);
     return fragment;
   }
 

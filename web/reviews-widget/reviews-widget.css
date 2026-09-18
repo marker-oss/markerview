@@ -2074,6 +2074,30 @@ button.rw-dist-row:disabled {
   margin-top: 14px;
 }
 
+.rw-attribution {
+  margin-top: 12px;
+  color: var(--rw-muted);
+  font-size: calc(12.5px * var(--rw-font-scale));
+  text-align: right;
+}
+
+.rw-attribution a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-weight: 600;
+}
+
+.rw-attribution a:hover {
+  text-decoration: underline;
+}
+
+@container (max-width: 520px) {
+  .rw-attribution {
+    text-align: center;
+  }
+}
+
 .rw-load-more {
   min-height: 40px;
   min-width: 148px;

@@ -475,6 +475,17 @@
     return ok;
   })(), true);
 
+  eq("attribution is present and links to MarkerView", (function () {
+    var host = mountRoot({ reviews: [] });
+    var attribution = host.querySelector(".rw-attribution");
+    var link = attribution && attribution.querySelector("a");
+    var ok = attribution && attribution.textContent === "создано при помощи markerview"
+      && link && link.href === "https://markerview.ru/"
+      && link.target === "_blank"
+      && link.rel === "noopener noreferrer";
+    host.remove();
+    return ok;
+  })(), true);
   out.textContent += "\n" + pass + " passed, " + fail + " failed\n";
   document.title = fail === 0 ? "ALL PASS" : "FAIL";
 </script>
