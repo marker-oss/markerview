@@ -4,7 +4,7 @@ MarkerView Core — open-source проект под лицензией Apache-2.
 
 ## Поддержать на Boosty
 
-**[Поддержать развитие MarkerView на Boosty](https://boosty.to/markerview)**
+**[Разовый донат на Boosty](https://boosty.to/markerview/donate)** · [Страница проекта на Boosty](https://boosty.to/markerview)
 
 Ваша поддержка помогает развивать проект, выпускать обновления и исправлять ошибки. Доступные способы поддержки указаны на странице Boosty.
 
