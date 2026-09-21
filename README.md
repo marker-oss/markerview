@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/marker-oss/markerview/actions/workflows/ci.yml/badge.svg)](https://github.com/marker-oss/markerview/actions/workflows/ci.yml) [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue)](LICENSE) [![GitHub release](https://img.shields.io/github/v/release/marker-oss/markerview)](https://github.com/marker-oss/markerview/releases) [![Поддержать на Boosty](https://img.shields.io/badge/Boosty-Поддержать-F15F2C?logo=boosty&logoColor=white)](https://boosty.to/markerview)
 
-[**MarkerView Cloud**](https://markerview.ru) · [**Запустить у себя**](#быстрый-старт) · [**Руководство**](docs/user-guide.md) · [**Планы развития**](#планы-развития)
+[**MarkerView Cloud**](https://markerview.ru) · [**Документация для владельца магазина**](https://markerview.ru/docs/) · [**Запустить у себя**](#быстрый-старт) · [**Техническое руководство**](docs/user-guide.md) · [**Планы развития**](#планы-развития)
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme-hero-dark.png">
