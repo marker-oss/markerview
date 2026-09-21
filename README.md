@@ -5,7 +5,7 @@
 Отзывы с Ozon, Wildberries и Яндекс Маркета — в настраиваемом виджете вашего интернет-магазина. Подключите источники, сопоставьте товары и управляйте публикацией из одной админки.
 
 [![CI](https://github.com/marker-oss/markerview/actions/workflows/ci.yml/badge.svg)](https://github.com/marker-oss/markerview/actions/workflows/ci.yml) [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue)](LICENSE) [![GitHub release](https://img.shields.io/github/v/release/marker-oss/markerview)](https://github.com/marker-oss/markerview/releases) [![Поддержать на Boosty](https://img.shields.io/badge/Boosty-Поддержать-F15F2C?logo=boosty&logoColor=white)](https://boosty.to/markerview)
-[![Telegram](https://shields.io)](https://t.me/+kozSKEZqDls5M2Ni
+[![Telegram](https://shields.io)](https://t.me/+kozSKEZqDls5M2Ni)
 
 [**MarkerView Cloud**](https://markerview.ru) · [**Документация для владельца магазина**](https://markerview.ru/docs/) · [**Запустить у себя**](#быстрый-старт) · [**Техническое руководство**](docs/user-guide.md) · [**Планы развития**](#планы-развития)
 
@@ -118,7 +118,7 @@ Self-hosted даёт контроль над хранилищем, но не о�
 [Apache License 2.0](LICENSE) — можно использовать, изменять и разворачивать в коммерческих проектах.
 
 Вопросы о Cloud, помощь с установкой и доработки: [@pishite0suda в Telegram](https://t.me/pishite0suda). Общий community-чат
-[![Telegram](https://shields.io)](https://t.me/+kozSKEZqDls5M2Ni
+[![Telegram](https://shields.io)](https://t.me/+kozSKEZqDls5M2Ni)
 ; технические вопросы и предложения можно обсуждать в Issues.
 
 ---
