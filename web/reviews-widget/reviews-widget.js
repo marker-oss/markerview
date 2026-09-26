@@ -1031,6 +1031,21 @@
       if (state.config.layout.player.autoAdvance.pauseOnHover) { state.viewerHovered = true; clearViewerTimer(root, state); }
     });
     viewer.addEventListener("mouseleave", () => { state.viewerHovered = false; scheduleViewerTimer(root, state); });
+    const onYandexMessage = (event) => {
+      const frame = viewer.querySelector('[data-role="viewer-stage"] iframe[data-yandex-player]');
+      if (state.destroyed || !viewer.open || !frame || event.origin !== "https://runtime.strm.yandex.ru" || event.source !== frame.contentWindow) return;
+      let data = event.data;
+      if (typeof data === "string") {
+        try { data = JSON.parse(data); } catch { return; }
+      }
+      if (data && data.event === "inited") {
+        frame.contentWindow.postMessage({ method: "play" }, "https://runtime.strm.yandex.ru");
+      }
+      if (data && data.event === "ended" && state.config.layout.player.autoAdvance.enabled && viewer.__items.length > 1) {
+        shiftMediaViewer(root, 1, state);
+      }
+    };
+    window.addEventListener("message", onYandexMessage, { signal: state.controller.signal });
     const modal = root.querySelector('[data-role="form-modal"]');
     modal.addEventListener("cancel", (event) => { event.preventDefault(); closeFormModal(root, state); });
     modal.addEventListener("click", (event) => { if (event.target === modal) closeFormModal(root, state); });
@@ -1906,7 +1921,8 @@
 
   function isYandexPlayerURL(value) {
     try {
-      return new URL(value, window.location.href).hostname === "runtime.strm.yandex.ru";
+      const url = new URL(value);
+      return url.protocol === "https:" && url.hostname === "runtime.strm.yandex.ru" && !url.port && !url.username && !url.password && url.pathname.startsWith("/player/");
     } catch {
       return false;
     }
@@ -2123,6 +2139,7 @@
   function updateViewerPlay(root, state) {
     const button = root.querySelector('[data-role="viewer-play"]');
     if (button) {
+      button.hidden = state.viewerPlaying;
       button.setAttribute("aria-label", state.viewerPlaying ? "Пауза" : "Воспроизвести");
       button.classList.toggle("is-paused", !state.viewerPlaying);
     }
@@ -2188,7 +2205,7 @@
     const playBtn = viewer.querySelector('[data-role="viewer-play"]');
     const progress = viewer.querySelector('[data-role="viewer-progress"]');
     const cfg = root.__reviewsWidgetConfig || {};
-    const yandexPlayer = isYandexPlayerURL(item.url);
+    const yandexPlayer = item.kind === "video" && isYandexPlayerURL(item.url);
     const canPlayVideo = item.kind === "video" && !yandexPlayer && !item.embedProvider && !isLikelyImageURL(item.url);
     const canShowImage = item.kind !== "video" || item.previewUrl || isLikelyImageURL(item.url);
     const rawViewerSrc = item.kind === "video" ? item.previewUrl || item.url : item.url || item.previewUrl;
@@ -2219,8 +2236,10 @@
     const viewerVideoAttrs = autoPlay ? " autoplay muted" : "";
     const panel = productPanelState(root, cfg) ? renderProductPanel(item) : "";
     const embedSrc = embedFrameURL(item);
-    const mediaHTML = embedSrc
-      ? `<iframe class="rw-media-viewer-embed" src="${escapeAttribute(embedSrc)}" title="${escapeAttribute(captionText)}" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" allowfullscreen></iframe>`
+    const mediaHTML = yandexPlayer
+      ? `<iframe class="rw-media-viewer-embed" data-yandex-player src="${escapeAttribute((() => { const url = new URL(item.url); url.searchParams.set("autoplay", "1"); url.searchParams.set("mute", "1"); return url.href; })())}" title="${escapeAttribute(captionText)}" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>`
+      : embedSrc
+        ? `<iframe class="rw-media-viewer-embed" src="${escapeAttribute(embedSrc)}" title="${escapeAttribute(captionText)}" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" allowfullscreen></iframe>`
       : canPlayVideo
         ? `<video class="rw-media-viewer-video" src="${escapeAttribute(item.url)}"${item.previewUrl ? ` poster="${escapeAttribute(item.previewUrl)}"` : ""} controls playsinline${viewerVideoAttrs}></video>`
         : canShowImage ? `<img class="rw-media-viewer-image" src="${escapeAttribute(viewerSrc)}" alt="${escapeAttribute(captionText)}" />`

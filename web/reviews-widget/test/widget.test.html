@@ -117,11 +117,70 @@
   var evilStage = viewerStageHTML([{ kind: "video", url: "https://evil.test/watch/1", embedProvider: "rutube", embedId: "abc" }]);
   eq("non-allowlisted embed host falls back to link placeholder", evilStage.indexOf("rw-media-viewer-placeholder") !== -1 && evilStage.indexOf("<iframe") === -1, true);
   var yandexPreviewStage = viewerStageHTML([{ kind: "video", url: "https://runtime.strm.yandex.ru/player/abc", previewUrl: "https://avatars.mds.yandex.net/get-video/preview.jpg" }]);
-  eq("Yandex HTML player with preview never renders video", yandexPreviewStage.indexOf("<video") === -1 && yandexPreviewStage.indexOf('src="https://avatars.mds.yandex.net/get-video/preview.jpg"') !== -1, true);
+  eq("Yandex HTML player with preview embeds instead of video", yandexPreviewStage.indexOf("<video") === -1 && yandexPreviewStage.indexOf('data-yandex-player') !== -1, true);
   var yandexNoPreviewStage = viewerStageHTML([{ kind: "video", url: "https://runtime.strm.yandex.ru/player/abc" }]);
-  eq("Yandex HTML player without preview renders external link", yandexNoPreviewStage.indexOf("<video") === -1 && yandexNoPreviewStage.indexOf("rw-media-viewer-placeholder") !== -1 && yandexNoPreviewStage.indexOf("runtime.strm.yandex.ru/player/abc") !== -1, true);
+  eq("Yandex HTML player without preview embeds", yandexNoPreviewStage.indexOf("<video") === -1 && yandexNoPreviewStage.indexOf('data-yandex-player') !== -1, true);
   var lookalikeYandexStage = viewerStageHTML([{ kind: "video", url: "https://runtime.strm.yandex.ru.evil.test/player/abc" }]);
   eq("Yandex player rule matches exact hostname only", lookalikeYandexStage.indexOf("<video") !== -1, true);
+  (function () {
+    var host = document.createElement("div");
+    document.body.appendChild(host);
+    ReviewsWidget.mount(host, { reviews: [videoReview()], config: { layout: { video: { autoplayInViewer: false } } } });
+    host.querySelector('[data-media-viewer]').click();
+    var viewer = host.querySelector('[data-role="media-viewer"]');
+    var video = viewer.querySelector('video');
+    var play = viewer.querySelector('[data-role="viewer-play"]');
+    eq("video overlay visible while paused", play.hidden, false);
+    video.dispatchEvent(new Event('playing'));
+    eq("video overlay hidden during playback", play.hidden, true);
+    video.dispatchEvent(new Event('pause'));
+    eq("video overlay returns on pause", play.hidden, false);
+    video.dispatchEvent(new Event('playing'));
+    video.dispatchEvent(new Event('error'));
+    eq("video overlay returns on error", play.hidden, false);
+    host.remove();
+  })();
+  (function () {
+    var host = document.createElement("div");
+    document.body.appendChild(host);
+    var first = { kind: "video", url: "https://runtime.strm.yandex.ru/player/video/first?autoplay=0&mute=0" };
+    var second = { kind: "video", url: "https://runtime.strm.yandex.ru/player/video/second?autoplay=0&mute=0" };
+    ReviewsWidget.mount(host, { reviews: [{ marketplace: "ym", rating: 5, authorName: "Покупатель", createdAt: "2026-06-01T00:00:00Z", media: [first, second] }] });
+    host.querySelector('[data-media-viewer]').click();
+    var viewer = host.querySelector('[data-role="media-viewer"]');
+    var frame = viewer.querySelector('[data-role="viewer-stage"] iframe');
+    eq("Yandex video opens inside player with muted autoplay", !!frame && frame.src.startsWith("https://runtime.strm.yandex.ru/player/video/first?") && new URL(frame.src).searchParams.get("autoplay") === "1" && new URL(frame.src).searchParams.get("mute") === "1", true);
+    var commands = [];
+    frame.contentWindow.postMessage = function (command, origin) { commands.push([command.method, origin]); };
+    window.dispatchEvent(new MessageEvent('message', { origin: 'https://runtime.strm.yandex.ru', source: frame.contentWindow, data: JSON.stringify({ event: 'inited' }) }));
+    eq("Yandex ready starts muted playback", commands, [["play", "https://runtime.strm.yandex.ru"]]);
+    window.dispatchEvent(new MessageEvent('message', { origin: 'https://evil.test', source: frame && frame.contentWindow, data: JSON.stringify({ event: 'ended' }) }));
+    eq("untrusted Yandex ended event cannot advance", viewer.querySelector('iframe'), frame);
+    window.dispatchEvent(new MessageEvent('message', { origin: 'https://runtime.strm.yandex.ru', source: window, data: JSON.stringify({ event: 'ended' }) }));
+    eq("other frame ended event cannot advance", viewer.querySelector('iframe'), frame);
+    window.dispatchEvent(new MessageEvent('message', { origin: 'https://runtime.strm.yandex.ru', source: frame && frame.contentWindow, data: JSON.stringify({ event: 'ended' }) }));
+    eq("Yandex ended event advances to next video", !!viewer.querySelector('iframe') && viewer.querySelector('iframe').src.includes('/second?'), true);
+    var next = viewer.querySelector('iframe');
+    window.dispatchEvent(new MessageEvent('message', { origin: 'https://runtime.strm.yandex.ru', source: frame && frame.contentWindow, data: JSON.stringify({ event: 'ended' }) }));
+    eq("stale player event cannot advance", viewer.querySelector('iframe'), next);
+    host.__reviewsWidget.destroy();
+    host.remove();
+  })();
+  (function () {
+    var host = document.createElement("div");
+    document.body.appendChild(host);
+    ReviewsWidget.mount(host, { reviews: [{ marketplace: "ym", rating: 5, authorName: "Покупатель", createdAt: "2026-06-01T00:00:00Z", media: [
+      { kind: "video", url: "https://runtime.strm.yandex.ru/player/video/one" },
+      { kind: "video", url: "https://runtime.strm.yandex.ru/player/video/two" },
+    ] }], config: { layout: { player: { autoAdvance: { enabled: false } } } } });
+    host.querySelector('[data-media-viewer]').click();
+    var viewer = host.querySelector('[data-role="media-viewer"]');
+    var frame = viewer.querySelector('iframe');
+    window.dispatchEvent(new MessageEvent('message', { origin: 'https://runtime.strm.yandex.ru', source: frame.contentWindow, data: JSON.stringify({ event: 'ended' }) }));
+    eq("disabled Yandex auto-advance keeps current video", viewer.querySelector('iframe'), frame);
+    host.__reviewsWidget.destroy();
+    host.remove();
+  })();
 
 
   // ── Shoppable preset (appearance.preset "shoppable") ───────────────────────

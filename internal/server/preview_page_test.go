@@ -158,6 +158,7 @@ func TestPreviewPageCSPAllowsShopStylesAndOurScript(t *testing.T) {
 		"img-src 'self' https: data:",
 		"font-src 'self' https: data:",
 		"media-src 'self' https:",
+		"frame-src https://runtime.strm.yandex.ru",
 		"frame-ancestors 'self'",
 	} {
 		if !strings.Contains(csp, want) {
