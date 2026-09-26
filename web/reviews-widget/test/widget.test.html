@@ -116,6 +116,12 @@
   eq("embed iframe never uses raw item.url", ytStage.indexOf("watch?v=") === -1, true);
   var evilStage = viewerStageHTML([{ kind: "video", url: "https://evil.test/watch/1", embedProvider: "rutube", embedId: "abc" }]);
   eq("non-allowlisted embed host falls back to link placeholder", evilStage.indexOf("rw-media-viewer-placeholder") !== -1 && evilStage.indexOf("<iframe") === -1, true);
+  var yandexPreviewStage = viewerStageHTML([{ kind: "video", url: "https://runtime.strm.yandex.ru/player/abc", previewUrl: "https://avatars.mds.yandex.net/get-video/preview.jpg" }]);
+  eq("Yandex HTML player with preview never renders video", yandexPreviewStage.indexOf("<video") === -1 && yandexPreviewStage.indexOf('src="https://avatars.mds.yandex.net/get-video/preview.jpg"') !== -1, true);
+  var yandexNoPreviewStage = viewerStageHTML([{ kind: "video", url: "https://runtime.strm.yandex.ru/player/abc" }]);
+  eq("Yandex HTML player without preview renders external link", yandexNoPreviewStage.indexOf("<video") === -1 && yandexNoPreviewStage.indexOf("rw-media-viewer-placeholder") !== -1 && yandexNoPreviewStage.indexOf("runtime.strm.yandex.ru/player/abc") !== -1, true);
+  var lookalikeYandexStage = viewerStageHTML([{ kind: "video", url: "https://runtime.strm.yandex.ru.evil.test/player/abc" }]);
+  eq("Yandex player rule matches exact hostname only", lookalikeYandexStage.indexOf("<video") !== -1, true);
 
 
   // ── Shoppable preset (appearance.preset "shoppable") ───────────────────────

@@ -635,7 +635,7 @@ export default function Reviews({ questions, pendingQuestions }: { questions: Re
           <div className="admin-media-dialog" role="dialog" aria-modal="true" aria-label="Просмотр медиа отзыва">
             <div className="admin-media-top">
               <strong>{mediaViewer.title}</strong>
-              <a href={activeMedia.url} target="_blank" rel="noreferrer">
+              <a href={safeMediaUrl(activeMedia.url) || undefined} target="_blank" rel="noreferrer noopener">
                 {activeMedia.kind === 'video' ? 'Открыть видео' : 'Открыть оригинал'}
               </a>
               <button className="clear-button" onClick={() => setMediaViewer(null)} aria-label="Закрыть просмотр">
@@ -648,12 +648,16 @@ export default function Reviews({ questions, pendingQuestions }: { questions: Re
               </button>
             )}
             <div className="admin-media-stage">
-              {activeMedia.kind === 'video' && isPlayableVideo(activeMedia.url) ? (
+              {isYandexPlayerUrl(activeMedia.url) ? (
+                <a className="admin-media-placeholder" href={safeMediaUrl(activeMedia.url) || undefined} target="_blank" rel="noreferrer noopener">
+                  Открыть видео
+                </a>
+              ) : activeMedia.kind === 'video' && isPlayableVideo(activeMedia.url) ? (
                 <video src={activeMedia.url} controls playsInline />
               ) : mediaPreview(activeMedia) ? (
                 <img src={mediaPreview(activeMedia)} alt={activeMedia.kind === 'video' ? 'Видео отзыва' : 'Фото отзыва'} />
               ) : (
-                <a className="admin-media-placeholder" href={activeMedia.url} target="_blank" rel="noreferrer">
+                <a className="admin-media-placeholder" href={safeMediaUrl(activeMedia.url) || undefined} target="_blank" rel="noreferrer noopener">
                   Открыть медиа
                 </a>
               )}
@@ -691,6 +695,23 @@ function mediaThumbnail(item: ReviewMedia) {
 function mediaPreview(item: ReviewMedia) {
   if (item.kind === 'video' && !isImageLike(item.url)) return item.previewUrl || ''
   return item.kind === 'video' ? item.previewUrl || item.url : item.url || item.previewUrl || ''
+}
+
+function safeMediaUrl(value: string) {
+  try {
+    const url = new URL(value, window.location.href)
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : ''
+  } catch {
+    return ''
+  }
+}
+
+function isYandexPlayerUrl(value: string) {
+  try {
+    return new URL(value, window.location.href).hostname === 'runtime.strm.yandex.ru'
+  } catch {
+    return false
+  }
 }
 
 function isPlayableVideo(url: string) {

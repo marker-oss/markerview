@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
+	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -20,6 +23,16 @@ const (
 	marketplaceID   = config.MarketplaceYM
 	defaultBaseURL  = "https://api.partner.market.yandex.ru"
 	defaultPageSize = 50
+	maxPlayerHTML   = 256 << 10
+	playerHost      = "runtime.strm.yandex.ru"
+	posterHost      = "avatars.mds.yandex.net"
+	metaTagPattern  = `(?i)<meta\b[^>]*>`
+	metaAttrPattern = `(?i)([\w:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')`
+)
+
+var (
+	metaTags  = regexp.MustCompile(metaTagPattern)
+	metaAttrs = regexp.MustCompile(metaAttrPattern)
 )
 
 type Client struct {
@@ -84,10 +97,66 @@ func (c *Client) FetchReviews(ctx context.Context, since time.Time, cursor strin
 		if !since.IsZero() && review.CreatedAtMP.Before(since) {
 			continue
 		}
+		for i := range review.Media {
+			if review.Media[i].Kind == "video" {
+				review.Media[i].PreviewURL = c.videoPoster(ctx, review.Media[i].URL)
+			}
+		}
 		reviews = append(reviews, review)
 	}
 
 	return reviews, nextToken, nil
+}
+
+// videoPoster reads only a bounded HTML player document on Yandex's exact
+// player host. Poster lookup is best-effort; a broken page must not stop sync.
+func (c *Client) videoPoster(ctx context.Context, raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "https" || u.Host != playerHost || u.User != nil {
+		return ""
+	}
+	client := *c.httpClient
+	client.Timeout = 5 * time.Second
+	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 3 || req.URL.Scheme != "https" || req.URL.Host != playerHost || req.URL.User != nil {
+			return http.ErrUseLastResponse
+		}
+		return nil
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, raw, nil)
+	if err != nil {
+		return ""
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || !strings.HasPrefix(strings.ToLower(resp.Header.Get("Content-Type")), "text/html") {
+		return ""
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxPlayerHTML+1))
+	if err != nil || len(body) > maxPlayerHTML {
+		return ""
+	}
+	for _, tag := range metaTags.FindAll(body, -1) {
+		attrs := make(map[string]string)
+		for _, match := range metaAttrs.FindAllSubmatch(tag, -1) {
+			value := match[2]
+			if len(value) == 0 {
+				value = match[3]
+			}
+			attrs[strings.ToLower(string(match[1]))] = html.UnescapeString(string(value))
+		}
+		if strings.ToLower(attrs["property"]) != "og:image" {
+			continue
+		}
+		poster, err := url.Parse(attrs["content"])
+		if err == nil && poster.Scheme == "https" && poster.Host == posterHost && poster.User == nil {
+			return poster.String()
+		}
+	}
+	return ""
 }
 
 func (c *Client) fetchPage(ctx context.Context, cursor string) ([]goodsFeedback, string, error) {

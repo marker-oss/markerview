@@ -94,3 +94,38 @@ func TestRunOnceRemapsExistingSellerArticles(t *testing.T) {
 		t.Fatalf("export not marked dirty after sync (dirty=%v err=%v)", dirty, err)
 	}
 }
+
+type posterAdapter struct{ poster string }
+
+func (a *posterAdapter) Marketplace() string { return "ym" }
+
+func (a *posterAdapter) FetchReviews(context.Context, time.Time, string) ([]marketplace.Review, string, error) {
+	return []marketplace.Review{{
+		Marketplace: "ym", ExternalReviewID: "7", CreatedAtMP: time.Now().UTC(),
+		Media: []marketplace.Media{{Kind: "video", URL: "https://runtime.strm.yandex.ru/player/7", PreviewURL: a.poster}},
+	}}, "", nil
+}
+
+func TestRunOncePublishesNewPosterOnExistingReview(t *testing.T) {
+	ctx := context.Background()
+	s := newCollectorTestStore(t)
+	adapter := &posterAdapter{}
+	runner := NewRunner(s, config.SyncConfig{}, slog.New(slog.NewTextHandler(io.Discard, nil)), []marketplace.Adapter{adapter})
+	if got := runner.RunOnce(ctx, []string{"ym"}); len(got) != 1 || got[0].Error != nil {
+		t.Fatalf("first sync = %+v", got)
+	}
+	at, dirty, err := s.ExportDirtySince(ctx)
+	if err != nil || !dirty {
+		t.Fatalf("initial export dirty = %v, %v", dirty, err)
+	}
+	if err := s.MarkExportPublished(ctx, at); err != nil {
+		t.Fatal(err)
+	}
+	adapter.poster = "https://avatars.mds.yandex.net/preview.jpg"
+	if got := runner.RunOnce(ctx, []string{"ym"}); len(got) != 1 || got[0].Error != nil {
+		t.Fatalf("second sync = %+v", got)
+	}
+	if _, dirty, err := s.ExportDirtySince(ctx); err != nil || !dirty {
+		t.Fatalf("export after poster update dirty = %v, %v", dirty, err)
+	}
+}

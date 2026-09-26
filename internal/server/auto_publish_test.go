@@ -59,3 +59,30 @@ func TestRunAutoPublishOncePublishesWhenDirty(t *testing.T) {
 		t.Fatal("clean state must not republish")
 	}
 }
+
+func TestAutoPublishWithReadOnlyParentAndWritableExportMount(t *testing.T) {
+	s := newAuthTestServer(t)
+	staticDir := t.TempDir()
+	mount := filepath.Join(staticDir, "reviews-data")
+	if err := os.Mkdir(mount, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(staticDir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chmod(staticDir, 0o755)
+	s.cfg.StaticDir = staticDir
+	ctx := context.Background()
+	if _, err := s.store.UpsertReview(ctx, marketplace.Review{Marketplace: "ym", ExternalReviewID: "mounted-1", SellerArticle: "42", CreatedAtMP: time.Now().UTC()}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.store.MarkExportDirty(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if published, err := s.runAutoPublishOnce(ctx); err != nil || !published {
+		t.Fatalf("mounted export publish = %v, %v", published, err)
+	}
+	if _, err := os.Stat(filepath.Join(mount, "by-article", "42.json")); err != nil {
+		t.Fatalf("missing mounted export: %v", err)
+	}
+}

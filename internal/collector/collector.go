@@ -88,6 +88,7 @@ func (r *Runner) runMarketplace(ctx context.Context, marketplaceID string) Resul
 
 	var watermark time.Time
 	cursor := ""
+	posterChanged := false
 	for {
 		reviews, nextCursor, err := adapter.FetchReviews(ctx, since, cursor)
 		if err != nil {
@@ -105,6 +106,7 @@ func (r *Runner) runMarketplace(ctx context.Context, marketplaceID string) Resul
 			if upsert.Created {
 				result.Upserted++
 			}
+			posterChanged = posterChanged || upsert.PreviewChanged
 			watermark = maxReviewTime(watermark, review, startedAt)
 		}
 
@@ -146,9 +148,9 @@ func (r *Runner) runMarketplace(ctx context.Context, marketplaceID string) Resul
 		}
 	}
 
-	// New reviews make the static export stale; the auto-publish loop picks
-	// this up. Best-effort: a failed mark only delays one republish.
-	if result.Upserted > 0 {
+	// New reviews and newly discovered video posters make static export stale.
+	// Best-effort: a failed mark only delays one republish.
+	if result.Upserted > 0 || posterChanged {
 		if err := r.store.MarkExportDirty(ctx); err != nil {
 			r.logger.Warn("mark export dirty failed", "marketplace", marketplaceID, "error", err)
 		}
