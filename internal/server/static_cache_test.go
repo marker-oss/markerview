@@ -64,6 +64,18 @@ func TestAdminAssetsRequireRevalidation(t *testing.T) {
 	}
 }
 
+func TestWidgetPageAllowsOnlyYandexPlayerFrame(t *testing.T) {
+	s := newAuthTestServer(t)
+	rec := httptest.NewRecorder()
+	s.handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/reviews-widget.js", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	if got := rec.Header().Get("Content-Security-Policy"); !strings.Contains(got, "frame-src https://runtime.strm.yandex.ru") || !strings.Contains(got, "frame-ancestors 'none'") {
+		t.Fatalf("widget CSP = %q", got)
+	}
+}
+
 // The admin editor and widget runtime are one versioned contract. A binary
 // update must therefore replace both even when the external static directory
 // still contains files from an older installation.
