@@ -52,6 +52,17 @@ func TestStaticAssetsNoCache(t *testing.T) {
 		t.Fatalf("product.html body = %q", body)
 	}
 }
+func TestAdminAssetsRequireRevalidation(t *testing.T) {
+	s := newAuthTestServer(t)
+	rec := httptest.NewRecorder()
+	s.handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/admin/assets/index.js", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("admin asset status = %d", rec.Code)
+	}
+	if got := rec.Header().Get("Cache-Control"); got != "no-cache" {
+		t.Fatalf("admin asset Cache-Control = %q, want no-cache", got)
+	}
+}
 
 // The admin editor and widget runtime are one versioned contract. A binary
 // update must therefore replace both even when the external static directory
