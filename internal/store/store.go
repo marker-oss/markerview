@@ -150,13 +150,10 @@ func (s *Store) migrateSyncStatePK(ctx context.Context) error {
 		if err := tx.Exec("UPDATE sync_states SET tenant_id = 1 WHERE tenant_id IS NULL OR tenant_id = 0").Error; err != nil {
 			return err
 		}
-		if err := tx.Exec(`CREATE TABLE sync_states_new (
-			tenant_id integer NOT NULL,
-			marketplace text NOT NULL,
-			last_synced_at datetime,
-			backfilled numeric NOT NULL DEFAULT false,
-			PRIMARY KEY (tenant_id, marketplace)
-		)`).Error; err != nil {
+		// Same shape AutoMigrate generates for SyncState: a hand-written
+		// NOT NULL variant makes the next AutoMigrate rebuild the table and
+		// fail on sync_states__temp.marketplace.
+		if err := tx.Exec("CREATE TABLE `sync_states_new` (`tenant_id` integer,`marketplace` text,`last_synced_at` datetime,`backfilled` numeric NOT NULL DEFAULT false,PRIMARY KEY (`tenant_id`,`marketplace`))").Error; err != nil {
 			return err
 		}
 		if err := tx.Exec(`INSERT INTO sync_states_new (tenant_id, marketplace, last_synced_at, backfilled)
