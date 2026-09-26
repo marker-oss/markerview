@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -301,6 +302,31 @@ func TestSyncStateUpsert(t *testing.T) {
 	}
 	if state.LastSyncedAt == nil || !state.LastSyncedAt.Equal(now) || !state.Backfilled {
 		t.Fatalf("saved sync state mismatch: %+v", state)
+	}
+}
+
+// Pre-multitenancy installs have sync_states keyed by marketplace alone. The
+// PK rebuild must leave a schema AutoMigrate accepts on every later start.
+func TestMigrateLegacySyncStatesSurvivesRestart(t *testing.T) {
+	ctx := context.Background()
+	s, err := Open(config.DBConfig{Driver: "sqlite", DSN: filepath.Join(t.TempDir(), "legacy.db")})
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	if err := s.db.Exec("CREATE TABLE `sync_states` (`marketplace` text,`last_synced_at` datetime,`backfilled` numeric NOT NULL DEFAULT false,PRIMARY KEY (`marketplace`))").Error; err != nil {
+		t.Fatalf("legacy schema: %v", err)
+	}
+	if err := s.db.Exec("INSERT INTO sync_states (marketplace, backfilled) VALUES ('wb', true)").Error; err != nil {
+		t.Fatalf("legacy row: %v", err)
+	}
+	for i := 1; i <= 2; i++ {
+		if err := s.Migrate(ctx); err != nil {
+			t.Fatalf("migrate #%d: %v", i, err)
+		}
+	}
+	state, err := s.GetSyncState(WithTenant(ctx, 1), "wb")
+	if err != nil || !state.Backfilled {
+		t.Fatalf("legacy sync state lost: %+v, %v", state, err)
 	}
 }
 
