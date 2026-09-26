@@ -666,7 +666,7 @@
           ${viewerMin ? "" : `<div class="rw-media-who" data-role="viewer-who"><span class="rw-avatar rw-who-avatar" data-role="viewer-avatar"></span><span class="rw-who-line"><b data-role="viewer-name"></b><span class="rw-when" data-role="viewer-when"></span></span><span class="rw-stars rw-who-stars" data-role="viewer-stars"></span></div>`}
           <span class="rw-media-tools">
             ${viewerCfg.showCounter ? `<span class="rw-media-counter" data-role="viewer-count"></span>` : ""}
-            ${viewerCfg.showOriginal ? `<a class="rw-media-original" data-role="viewer-original" href="#" target="_blank" rel="noreferrer">Открыть оригинал</a>` : ""}
+            ${viewerCfg.showOriginal ? `<a class="rw-media-original" data-role="viewer-original" href="#" target="_blank" rel="noreferrer noopener">Открыть оригинал</a>` : ""}
           </span>
           <button class="rw-media-close" type="button" data-role="viewer-close" aria-label="Закрыть просмотр">×</button>
         </div>
@@ -1904,6 +1904,14 @@
     } catch { return ""; }
   }
 
+  function isYandexPlayerURL(value) {
+    try {
+      return new URL(value, window.location.href).hostname === "runtime.strm.yandex.ru";
+    } catch {
+      return false;
+    }
+  }
+
 
   function renderCustomTags(review, config) {
     const fields = (config && config.customFields) || [];
@@ -2043,7 +2051,7 @@
         `data-media-review-text="${escapeAttribute(item.reviewText || "")}"`,
       ] : [],
       'target="_blank"',
-      'rel="noreferrer"',
+      'rel="noreferrer noopener"',
     ].flat().filter(Boolean).join(" ");
   }
 
@@ -2180,7 +2188,8 @@
     const playBtn = viewer.querySelector('[data-role="viewer-play"]');
     const progress = viewer.querySelector('[data-role="viewer-progress"]');
     const cfg = root.__reviewsWidgetConfig || {};
-    const canPlayVideo = item.kind === "video" && !item.embedProvider && !isLikelyImageURL(item.url);
+    const yandexPlayer = isYandexPlayerURL(item.url);
+    const canPlayVideo = item.kind === "video" && !yandexPlayer && !item.embedProvider && !isLikelyImageURL(item.url);
     const canShowImage = item.kind !== "video" || item.previewUrl || isLikelyImageURL(item.url);
     const rawViewerSrc = item.kind === "video" ? item.previewUrl || item.url : item.url || item.previewUrl;
     const viewerSrc = item.kind === "video" ? rawViewerSrc : mediaProxyURL(rawViewerSrc, root.__reviewsProxyBase);
@@ -2215,7 +2224,7 @@
       : canPlayVideo
         ? `<video class="rw-media-viewer-video" src="${escapeAttribute(item.url)}"${item.previewUrl ? ` poster="${escapeAttribute(item.previewUrl)}"` : ""} controls playsinline${viewerVideoAttrs}></video>`
         : canShowImage ? `<img class="rw-media-viewer-image" src="${escapeAttribute(viewerSrc)}" alt="${escapeAttribute(captionText)}" />`
-          : safeSourceURL(item.url) ? `<a class="rw-media-viewer-placeholder" href="${escapeAttribute(safeSourceURL(item.url))}" target="_blank" rel="noreferrer">Открыть медиа</a>` : `<span class="rw-media-viewer-placeholder">Медиа недоступно</span>`;
+          : safeSourceURL(item.url) ? `<a class="rw-media-viewer-placeholder" href="${escapeAttribute(safeSourceURL(item.url))}" target="_blank" rel="noreferrer noopener">Открыть медиа</a>` : `<span class="rw-media-viewer-placeholder">Медиа недоступно</span>`;
     stage.innerHTML = panel ? `<div class="rw-media-viewer-with-panel"><div class="rw-product-panel-stage">${mediaHTML}</div>${panel}</div>` : mediaHTML;
     const video = stage.querySelector("video");
     if (video) {

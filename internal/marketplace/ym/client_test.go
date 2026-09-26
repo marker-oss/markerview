@@ -137,6 +137,44 @@ func TestFetchReviewsMapsYMResponse(t *testing.T) {
 	}
 }
 
+func TestFetchReviewsFindsYandexVideoPoster(t *testing.T) {
+	const playerURL = "https://runtime.strm.yandex.ru/player/123?autoplay=1"
+	httpClient := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Hostname() == "runtime.strm.yandex.ru" {
+			return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/html"}}, Body: io.NopCloser(strings.NewReader(`<html><head><meta property="og:image" content="https://avatars.mds.yandex.net/get-market-video/cover.jpg?x=1&amp;y=2"></head></html>`))}, nil
+		}
+		return jsonResponse(http.StatusOK, map[string]any{"result": map[string]any{"feedbacks": []map[string]any{{
+			"feedbackId": 7, "createdAt": "2026-05-28T12:20:00Z",
+			"media": map[string]any{"videos": []string{playerURL}},
+		}}}}), nil
+	})}
+	client := NewWithHTTPClient(config.YMConfig{BusinessID: "1"}, "https://api.partner.test", httpClient, 50, nil)
+	reviews, _, err := client.FetchReviews(context.Background(), time.Time{}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := reviews[0].Media[0].PreviewURL; got != "https://avatars.mds.yandex.net/get-market-video/cover.jpg?x=1&y=2" {
+		t.Fatalf("poster = %q", got)
+	}
+}
+
+func TestYandexVideoPosterRejectsUntrustedURL(t *testing.T) {
+	requests := 0
+	client := NewWithHTTPClient(config.YMConfig{}, "https://api.partner.test", &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		requests++
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/html"}}, Body: io.NopCloser(strings.NewReader(`<meta property="og:image" content="https://evil.test/x.jpg">`))}, nil
+	})}, 50, nil)
+	if got := client.videoPoster(context.Background(), "https://runtime.strm.yandex.ru.evil.test/watch"); got != "" {
+		t.Fatalf("poster from untrusted player = %q", got)
+	}
+	if requests != 0 {
+		t.Fatalf("untrusted player fetched %d times", requests)
+	}
+	if got := client.videoPoster(context.Background(), "https://runtime.strm.yandex.ru/watch"); got != "" {
+		t.Fatalf("untrusted poster = %q", got)
+	}
+}
+
 func TestFetchReviewsPaginatesWithPageToken(t *testing.T) {
 	// First page returns a nextPageToken; the client must surface it as the cursor.
 	httpClient := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {

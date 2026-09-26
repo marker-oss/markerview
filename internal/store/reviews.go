@@ -12,8 +12,9 @@ import (
 )
 
 type UpsertResult struct {
-	Created bool
-	Review  Review
+	Created        bool
+	PreviewChanged bool
+	Review         Review
 }
 
 func (s *Store) UpsertReview(ctx context.Context, input marketplace.Review) (UpsertResult, error) {
@@ -97,6 +98,17 @@ func (s *Store) UpsertReview(ctx context.Context, input marketplace.Review) (Ups
 			result.Review = existing
 		}
 
+		for _, media := range input.Media {
+			if media.Kind != "video" || media.PreviewURL == "" || result.Created {
+				continue
+			}
+			var previous ReviewMedia
+			if err := tx.Where("review_id = ? AND url = ?", result.Review.ID, media.URL).First(&previous).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			} else if previous.PreviewURL == nil || *previous.PreviewURL != media.PreviewURL {
+				result.PreviewChanged = true
+			}
+		}
 		return replaceMedia(tx, result.Review.ID, input.Media)
 	})
 
@@ -143,6 +155,15 @@ func replaceMedia(tx *gorm.DB, reviewID uint, media []marketplace.Media) error {
 			Position:   item.Position,
 			Likes:      item.Likes,
 			Duration:   item.Duration,
+		}
+		if item.Kind == "video" && item.PreviewURL == "" {
+			// A transiently unavailable Yandex player must not erase its poster.
+			var previous ReviewMedia
+			if err := tx.Where("review_id = ? AND url = ?", reviewID, item.URL).First(&previous).Error; err == nil {
+				row.PreviewURL = previous.PreviewURL
+			} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
 		}
 		if err := tx.Clauses(clause.OnConflict{
 			Columns: []clause.Column{{Name: "review_id"}, {Name: "url"}},

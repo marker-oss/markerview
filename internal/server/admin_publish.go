@@ -181,6 +181,9 @@ func replaceExportDir(dir string, write func(string) error) error {
 		return err
 	}
 	tmp, err := os.MkdirTemp(parent, ".reviews-data-*")
+	if os.IsPermission(err) {
+		return replaceMountedExportDir(dir, write)
+	}
 	if err != nil {
 		return err
 	}
@@ -201,4 +204,35 @@ func replaceExportDir(dir string, write func(string) error) error {
 		return err
 	}
 	return os.RemoveAll(backup)
+}
+
+// Docker mounts the export directory itself; its read-only image parent cannot
+// host a sibling temp directory. Stage a full export inside the writable mount.
+func replaceMountedExportDir(dir string, write func(string) error) error {
+	tmp, err := os.MkdirTemp(dir, ".reviews-data-*")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tmp)
+	if err := write(tmp); err != nil {
+		return err
+	}
+	for _, name := range []string{"by-article", "index.json", "links.json"} {
+		source := filepath.Join(tmp, name)
+		if _, err := os.Stat(source); os.IsNotExist(err) {
+			continue
+		} else if err != nil {
+			return err
+		}
+		current := filepath.Join(dir, name)
+		old := filepath.Join(tmp, name+".old")
+		if err := os.Rename(current, old); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		if err := os.Rename(source, current); err != nil {
+			_ = os.Rename(old, current)
+			return err
+		}
+	}
+	return nil
 }

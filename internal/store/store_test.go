@@ -97,6 +97,26 @@ func TestUpsertReviewIsIdempotentAndSnapshotsMedia(t *testing.T) {
 	}
 }
 
+func TestUpsertYandexVideoKeepsPosterWhenLookupFails(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	review := marketplace.Review{Marketplace: "ym", ExternalReviewID: "video-1", CreatedAtMP: time.Now().UTC(), Media: []marketplace.Media{{Kind: "video", URL: "https://runtime.strm.yandex.ru/player/1", PreviewURL: "https://avatars.mds.yandex.net/poster.jpg"}}}
+	if _, err := s.UpsertReview(ctx, review); err != nil {
+		t.Fatal(err)
+	}
+	review.Media[0].PreviewURL = ""
+	if _, err := s.UpsertReview(ctx, review); err != nil {
+		t.Fatal(err)
+	}
+	var media ReviewMedia
+	if err := s.db.First(&media).Error; err != nil {
+		t.Fatal(err)
+	}
+	if media.PreviewURL == nil || *media.PreviewURL != "https://avatars.mds.yandex.net/poster.jpg" {
+		t.Fatalf("poster lost after transient lookup failure: %v", media.PreviewURL)
+	}
+}
+
 func TestUpsertReviewPersistsNormalizedFields(t *testing.T) {
 	ctx := context.Background()
 	s := newTestStore(t)
