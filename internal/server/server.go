@@ -422,7 +422,7 @@ func (s *Server) adminMux() *http.ServeMux {
 		})))
 	}
 
-	mux.Handle("/admin/", s.adminSPAHandler())
+	mux.Handle("/admin/", noCacheStatic(s.adminSPAHandler()))
 	return mux
 }
 
