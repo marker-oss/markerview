@@ -44,3 +44,17 @@ export async function apiWrite<T>(method: string, path: string, body?: unknown):
   if (!res.ok) throw new Error(await readError(res))
   return res.json() as Promise<T>
 }
+
+export async function apiUpload<T>(path: string, file: File, fields: Record<string, string> = {}): Promise<T> {
+  const token = await ensureCSRF()
+  const form = new FormData()
+  form.append('file', file)
+  Object.entries(fields).forEach(([key, value]) => form.append(key, value))
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'X-CSRF-Token': token },
+    body: form,
+  })
+  if (!res.ok) throw new Error(await readError(res))
+  return res.json() as Promise<T>
+}

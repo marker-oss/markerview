@@ -42,6 +42,12 @@ type Review struct {
 	ExternalReviewID   string `gorm:"size:128;not null;uniqueIndex:idx_marketplace_review"`
 	ExternalProductID  string `gorm:"size:128;not null;index"`
 	SellerArticle      string `gorm:"size:128;index"`
+	SourceKind         string `gorm:"size:16;not null;default:api;index"`
+	SourceMethod       string `gorm:"size:32;not null;default:api;index"`
+	SourceFingerprint  string `gorm:"size:64;index"`
+	IdentityKind       string `gorm:"size:16;not null;default:real;index"`
+	IdentityScope      string `gorm:"size:256;index"`
+	SourceConnectionID uint   `gorm:"not null;default:0;index"`
 	ProductID          *uint
 	Product            *Product
 	ReviewerIdentityID *uint

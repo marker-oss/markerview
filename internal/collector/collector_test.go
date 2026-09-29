@@ -101,7 +101,7 @@ func (a *posterAdapter) Marketplace() string { return "ym" }
 
 func (a *posterAdapter) FetchReviews(context.Context, time.Time, string) ([]marketplace.Review, string, error) {
 	return []marketplace.Review{{
-		Marketplace: "ym", ExternalReviewID: "7", CreatedAtMP: time.Now().UTC(),
+		Marketplace: "ym", ExternalReviewID: "7", Text: "Отзыв с видео", CreatedAtMP: time.Now().UTC(),
 		Media: []marketplace.Media{{Kind: "video", URL: "https://runtime.strm.yandex.ru/player/7", PreviewURL: a.poster}},
 	}}, "", nil
 }
@@ -127,5 +127,26 @@ func TestRunOncePublishesNewPosterOnExistingReview(t *testing.T) {
 	}
 	if _, dirty, err := s.ExportDirtySince(ctx); err != nil || !dirty {
 		t.Fatalf("export after poster update dirty = %v, %v", dirty, err)
+	}
+}
+
+type invalidReviewAdapter struct{}
+
+func (invalidReviewAdapter) Marketplace() string { return "ozon" }
+func (invalidReviewAdapter) FetchReviews(context.Context, time.Time, string) ([]marketplace.Review, string, error) {
+	return []marketplace.Review{{Marketplace: "ozon", ExternalReviewID: "bad", Text: "", CreatedAtMP: time.Now().UTC()}}, "", nil
+}
+
+func TestRunOnceDoesNotCheckpointInvalidReview(t *testing.T) {
+	ctx := context.Background()
+	s := newCollectorTestStore(t)
+	runner := NewRunner(s, config.SyncConfig{}, slog.New(slog.NewTextHandler(io.Discard, nil)), []marketplace.Adapter{invalidReviewAdapter{}})
+	results := runner.RunOnce(ctx, []string{"ozon"})
+	if len(results) != 1 || results[0].Error == nil {
+		t.Fatalf("invalid review accepted: %+v", results)
+	}
+	state, err := s.GetSyncState(ctx, "ozon")
+	if err != nil || state.LastSyncedAt != nil {
+		t.Fatalf("sync checkpoint advanced: state=%+v err=%v", state, err)
 	}
 }

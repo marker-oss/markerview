@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { apiGet, apiWrite } from '../api'
+import { apiGet, apiUpload, apiWrite } from '../api'
 import { toast } from '../toast'
 import type { MarketplaceStatus, SyncDispatch } from '../types'
 
@@ -25,6 +25,9 @@ const mpLogos: Record<string, string> = {
 }
 
 const defaultPublish: Record<string, boolean> = { wb: true, ym: true, ozon: false }
+
+type ImportMarketplace = 'wb' | 'ym' | 'ozon'
+type ImportFormat = 'canonical' | 'ozon'
 
 type CatalogStatus = {
   state: 'idle' | 'running' | 'done' | 'error'
@@ -58,9 +61,13 @@ export default function Marketplaces() {
   const [publish, setPublish] = useState<Record<string, boolean>>(defaultPublish)
   const [catalog, setCatalog] = useState<CatalogStatus | null>(null)
   const [catalogPollEpoch, setCatalogPollEpoch] = useState(0)
+  const [importMarketplace, setImportMarketplace] = useState<ImportMarketplace>('ozon')
+  const [importFormat, setImportFormat] = useState<ImportFormat>('ozon')
+  const [importFile, setImportFile] = useState<File | null>(null)
+  const [importToken, setImportToken] = useState('')
+  const [importSummary, setImportSummary] = useState('')
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
-
   // Poll the background catalog-refresh job while it runs; also picks up a job
   // already started earlier (page reload, another tab).
   useEffect(() => {
@@ -162,6 +169,40 @@ export default function Marketplaces() {
       setBusy('')
     }
   }
+  async function previewImport() {
+    if (!importFile) return
+    setImportToken('')
+    setImportSummary('')
+    setBusy('import')
+    try {
+      const result = await apiUpload<{ token: string; total: number; errors: number }>('/admin/api/imports/ozon/preview', importFile, {
+        marketplace: importMarketplace,
+        format: importFormat,
+      })
+      setImportToken(result.token)
+      setImportSummary(`В preview: ${result.total} строк, ошибок: ${result.errors}`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Импорт не выполнен')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function commitImport() {
+    if (!importToken) return
+    setBusy('import')
+    try {
+      const result = await apiWrite<{ created: number; updated: number; failed: number }>('POST', '/admin/api/imports/ozon/commit', { token: importToken })
+      setImportSummary(`Импортировано: новых ${result.created}, обновлено ${result.updated}, ошибок ${result.failed}`)
+      setImportToken('')
+      setImportFile(null)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Импорт не выполнен')
+    } finally {
+      setBusy('')
+    }
+  }
+
 
   function setDraft(id: string, key: string, value: string) {
     setDrafts({ ...drafts, [id]: { ...(drafts[id] ?? {}), [key]: value } })
@@ -240,6 +281,7 @@ export default function Marketplaces() {
                 <p className="hint" id={`mp-${item.id}-help`}>
                   {item.id === 'wb' && 'Персональный токен WB категории «Отзывы и вопросы». '}
                   {item.id === 'ym' && 'Укажите Business ID и API key или OAuth token. '}
+                  {item.id === 'ozon' && 'MarkerView использует официальный Ozon Seller API. Client ID и API key должны принадлежать этому кабинету продавца; доступ к отзывам зависит от тарифа или услуги Ozon и не входит автоматически в подписку MarkerView. '}
                   Пустые поля не изменяют сохранённые значения.
                 </p>
                 <div className="mp-card-actions">
@@ -251,6 +293,60 @@ export default function Marketplaces() {
                   </button>
                 </div>
               </form>
+              {item.id === 'ozon' && (
+                <div className="mp-import">
+                  <h3>Ручной импорт отзывов</h3>
+                  <p className="hint">Загрузите CSV или XLSX с каноническими заголовками для любой площадки либо файл экспорта Ozon.</p>
+                  <div className="mp-fields">
+                    <label className="fld">
+                      <span>Площадка</span>
+                      <select
+                        value={importMarketplace}
+                        disabled={busy !== ''}
+                        onChange={(e) => {
+                          const marketplace = e.target.value as ImportMarketplace
+                          setImportMarketplace(marketplace)
+                          setImportFormat(marketplace === 'ozon' ? 'ozon' : 'canonical')
+                          setImportToken('')
+                          setImportSummary('')
+                        }}
+                      >
+                        <option value="wb">Wildberries</option>
+                        <option value="ym">Яндекс Маркет</option>
+                        <option value="ozon">Ozon</option>
+                      </select>
+                    </label>
+                    <label className="fld">
+                      <span>Формат файла</span>
+                      <select
+                        value={importFormat}
+                        disabled={busy !== ''}
+                        onChange={(e) => {
+                          setImportFormat(e.target.value as ImportFormat)
+                          setImportToken('')
+                          setImportSummary('')
+                        }}
+                      >
+                        <option value="canonical">Канонические заголовки</option>
+                        <option value="ozon" disabled={importMarketplace !== 'ozon'}>Экспорт Ozon</option>
+                      </select>
+                    </label>
+                  </div>
+                  <p className="hint">Отзывы будут импортированы как {mpNames[importMarketplace]}. Они доступны только для чтения: отвечать на них через API нельзя.</p>
+                  <input
+                    type="file"
+                    accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    disabled={busy !== ''}
+                    aria-label="Файл с отзывами"
+                    onChange={(e) => { setImportFile(e.target.files?.[0] ?? null); setImportToken(''); setImportSummary('') }}
+                  />
+                  <div className="mp-card-actions">
+                    <button className="secondary" type="button" onClick={previewImport} disabled={busy !== '' || !importFile}>Проверить файл</button>
+                    <button className="secondary" type="button" onClick={commitImport} disabled={busy !== '' || !importToken}>Импортировать</button>
+                  </div>
+                  {importSummary && <p className="hint" role="status">{importSummary}</p>}
+                </div>
+              )}
               <div className="mp-publishing">
                 <div>
                   <h3>Публикация ответов</h3>

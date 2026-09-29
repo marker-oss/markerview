@@ -121,7 +121,7 @@ func TestAdminTriggerSync(t *testing.T) {
 				return SyncDispatch{Started: []string{"wb"}}, nil
 			},
 			want: http.StatusAccepted,
-			body: `"started":["wb"]`,
+			body: `"started":["wb"],"busy":[]`,
 		},
 		{
 			name: "partial start still 202",
@@ -130,6 +130,14 @@ func TestAdminTriggerSync(t *testing.T) {
 			},
 			want: http.StatusAccepted,
 			body: `"busy":["wb"]`,
+		},
+		{
+			name: "empty dispatch returns arrays",
+			trigger: func(context.Context, []string) (SyncDispatch, error) {
+				return SyncDispatch{}, nil
+			},
+			want: http.StatusAccepted,
+			body: `"started":[],"busy":[]`,
 		},
 		{
 			name: "all busy returns 409",

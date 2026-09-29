@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"reviews/internal/config"
+	"reviews/internal/external_sources"
 	"reviews/internal/marketplace"
 	"reviews/internal/store"
 )
@@ -98,7 +99,7 @@ func (r *Runner) runMarketplace(ctx context.Context, marketplaceID string) Resul
 
 		for _, review := range reviews {
 			result.Seen++
-			upsert, err := r.store.UpsertReview(ctx, review)
+			upsert, err := external_sources.NewService(r.store).ImportOne(ctx, external_sources.SourceContext{Marketplace: marketplaceID, Method: marketplace.SourceMethodAPI}, review)
 			if err != nil {
 				result.Error = err
 				return result

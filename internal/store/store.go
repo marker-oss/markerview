@@ -79,6 +79,10 @@ func (s *Store) Migrate(ctx context.Context) error {
 		&AppSetting{},
 		&Question{},
 		&DSRLog{},
+		&SourceConnection{},
+		&ScrapeTarget{},
+		&ScrapeJob{},
+		&ImportRun{},
 	); err != nil {
 		return err
 	}
@@ -92,6 +96,9 @@ func (s *Store) Migrate(ctx context.Context) error {
 		if err := s.extraMigrate(ctx, s.db); err != nil {
 			return fmt.Errorf("overlay migration: %w", err)
 		}
+	}
+	if err := s.migrateReviewIdentity(ctx); err != nil {
+		return fmt.Errorf("review identity migration: %w", err)
 	}
 	// Scrub is a startup data migration across every tenant's rows: the
 	// tenant may not exist yet on a fresh strict-mode instance, so iterate
@@ -165,4 +172,10 @@ func (s *Store) migrateSyncStatePK(ctx context.Context) error {
 		}
 		return tx.Exec("ALTER TABLE sync_states_new RENAME TO sync_states").Error
 	})
+}
+func (s *Store) migrateReviewIdentity(ctx context.Context) error {
+	if err := s.db.WithContext(ctx).Exec("UPDATE reviews SET identity_kind = 'real', identity_scope = '', source_connection_id = 0 WHERE source_kind = 'api' AND (identity_kind IS NULL OR identity_kind = '')").Error; err != nil {
+		return err
+	}
+	return s.db.WithContext(ctx).Exec("UPDATE reviews SET identity_kind = 'synthetic', identity_scope = CASE WHEN source_method IN ('csv','xlsx') THEN 'file:' || marketplace || ':' || source_method ELSE 'legacy' END WHERE source_kind <> 'api' AND (identity_kind IS NULL OR identity_kind = '' OR identity_kind = 'real')").Error
 }

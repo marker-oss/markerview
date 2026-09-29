@@ -22,7 +22,7 @@ func (s *Server) replyPublishEnabled(ctx context.Context, marketplace string) bo
 // are marked "unsupported".
 func (s *Server) publishReply(ctx context.Context, review store.Review) {
 	id := review.ID
-	if review.Marketplace == store.MarketplaceSite {
+	if review.Marketplace == store.MarketplaceSite || review.SourceKind == "imported" {
 		s.setUnsupported(ctx, id)
 		return
 	}

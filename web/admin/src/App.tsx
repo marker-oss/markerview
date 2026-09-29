@@ -175,6 +175,11 @@ export default function App() {
   // installed (hosted build) AND the session belongs to an owner.
   const hasOperator = role === 'owner' && OperatorPage !== null
   const hasBilling = BillingPage !== null
+  useEffect(() => {
+    if (mode === 'authed' && route === 'operator' && !hasOperator) {
+      window.location.hash = '#/dashboard'
+    }
+  }, [mode, route, hasOperator])
 
   useEffect(() => {
     apiGet<{ user_id: number; role: string }>('/admin/api/me')

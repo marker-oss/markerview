@@ -27,6 +27,23 @@ export default function Settings() {
   const [dsrEmail, setDsrEmail] = useState('')
   const [dsrResult, setDsrResult] = useState<{ reviews: unknown[] } | null>(null)
   const [dsrBusy, setDsrBusy] = useState(false)
+  const [deletePassword, setDeletePassword] = useState('')
+  const [deleteBusy, setDeleteBusy] = useState(false)
+
+  async function deleteTenant() {
+    if (!deletePassword) return
+    if (!window.confirm('Все данные аккаунта будут удалены безвозвратно. Продолжить?')) return
+    setDeleteBusy(true)
+    try {
+      await apiWrite('DELETE', '/admin/api/tenant', { password: deletePassword })
+      window.location.hash = '#/login'
+      window.location.reload()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Не удалось удалить аккаунт')
+    } finally {
+      setDeleteBusy(false)
+    }
+  }
 
   useEffect(() => {
     apiGet<SettingsResponse>('/admin/api/settings')
@@ -219,6 +236,22 @@ export default function Settings() {
           Для отзывов с маркетплейсов удаляется только наша копия. Оригинал на WB / Ozon / Яндекс Маркет
           удаляется через сам маркетплейс.
         </p>
+      </div>
+      <div className="sec-t">Опасная зона</div>
+      <div className="card" style={{ padding: 18, display: 'grid', gap: 12 }}>
+        <p className="hint">Удаление аккаунта удалит данные тенанта, публикации, настройки, credentials и активные сессии.</p>
+        <div className="fbar" style={{ padding: 0 }}>
+          <input
+            type="password"
+            value={deletePassword}
+            onChange={(e) => setDeletePassword(e.target.value)}
+            placeholder="Текущий пароль"
+            autoComplete="current-password"
+          />
+          <button className="danger" onClick={deleteTenant} disabled={deleteBusy || !deletePassword}>
+            {deleteBusy ? 'Удаляем…' : 'Удалить аккаунт'}
+          </button>
+        </div>
       </div>
     </section>
   )

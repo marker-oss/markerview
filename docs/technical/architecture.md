@@ -31,6 +31,7 @@ flowchart LR
 | HTTP, tenant-scope, CORS | `internal/server` | [`Server.handler`](../../internal/server/server.go) |
 | Данные и транзакции | `internal/store` | [`Store.UpsertReview`](../../internal/store/reviews.go), модели в [`models.go`](../../internal/store/models.go) |
 | Сбор с площадок | `internal/collector` + `internal/marketplace` | [`Runner.RunOnce`](../../internal/collector/collector.go), [`Adapter`](../../internal/marketplace/model.go) |
+| Внешние источники и файлы | `internal/external_sources`, `external-sources/` | [`Service.Import`](../../internal/external_sources/reviews.go), [`handleWorkerResult`](../../internal/server/external_sources.go) |
 | Публичная форма JSON | `internal/reviewjson` | [`Mapper.ToReview`](../../internal/reviewjson/reviewjson.go) |
 | Статический экспорт | `internal/export` | [`BuildBundles`](../../internal/export/export.go), [`Write`](../../internal/export/export.go) |
 | Админская настройка | `web/admin` + `internal/server` | [`Editor.tsx`](../../web/admin/src/pages/Editor.tsx), [`admin_widget_config.go`](../../internal/server/admin_widget_config.go) |
@@ -38,13 +39,15 @@ flowchart LR
 
 ## Текущий runtime-flow
 
-### 1. Marketplace → collector → store
+### 1. Marketplace/API/файл/worker → Go import boundary → store
 
-`Current.` `runServe` (standalone CLI) или [`app.Serve`](../../internal/app/app.go) создаёт store, HTTP-сервер и фоновые циклы. Синхронизация вызывает `collector.Runner.RunOnce`; для каждой площадки выбирается адаптер по имени. Один запуск получает `SyncRun`, читает [`SyncState`](../../internal/store/models.go), идёт от watermark с overlap, перелистывает cursor и вызывает `UpsertReview` для каждой записи.
+`Current.` `runServe` (standalone CLI) или [`app.Serve`](../../internal/app/app.go) создаёт store, HTTP-сервер и фоновые циклы. Синхронизация вызывает `collector.Runner.RunOnce`; для каждой площадки выбирается адаптер по имени. Один запуск получает `SyncRun`, читает [`SyncState`](../../internal/store/models.go), идёт от watermark с overlap и перелистывает cursor. Каждый отзыв официального Go API-адаптера проходит `external_sources.Service.ImportOne`; CSV/XLSX commit и worker result вызывают тот же сервис для batch. Внутренние клиенты не делают HTTP к собственному серверу. Внешний worker использует outbound HTTP(S) и не пишет в БД.
 
-`UpsertReview` выполняется транзакционно: ищет связь товара по `(tenant_id, marketplace, external_product_id)`, а отзыв — по `(tenant_id, marketplace, external_review_id)`. Новая запись получает `imported`; обновление сохраняет статус, видимость, закрепление и административный ответ, но текстовые поля источника может перезаписать. Media синхронизируется в той же транзакции. Имя автора анонимизируется, `Raw` очищается.
+`SourceContext` создаётся из доверенного collector/admin session или token-authenticated `SourceConnection` и `ScrapeTarget`: tenant, marketplace, product и `source_method` не выбираются worker JSON. Для файла доступны существующий экспорт Ozon и канонический CSV/XLSX с выбором WB/Яндекс Маркета/Ozon. Импортированные записи read-only для marketplace reply; подтверждённый API ID может повысить provenance до `api`, но synthetic ID не может. `UpsertReview` транзакционно ищет отзыв по `(tenant_id, marketplace, external_review_id)`, отклоняет конфликт реальной и synthetic identity, сохраняет модерацию, видимость, закрепление и административный ответ; при отсутствии новых answer/media не стирает существующие. Имя автора анонимизируется, `Raw` очищается.
 
 Второй, необязательный проход адаптера получает вопросы. Ошибка вопросов логируется и не делает review-sync ошибочным. После новых отзывов store помечается dirty для статического экспорта. Затем сохраняются watermark и итог `SyncRun`; ошибка финализации только логируется.
+
+Worker routes `GET /external/v1/worker/jobs` и `POST /external/v1/worker/jobs/{id}/claim|heartbeat|result|finish` зарегистрированы общим `internal/server`. Lease/attempt не позволяют поздней попытке импортировать; только полностью принятый result продвигает cursor, а batch с ошибочной строкой сохраняет валидные записи без продвижения. Для Ozon target cloud сохраняет HTTPS `www.ozon.ru/product/<slug>-<id>/` без share query и выводит `external_product_id` из пути; повторный target не сбрасывает cursor. Публичный `external-sources/` — JSON API connector, не Ozon scraper. Приватный scraper не часть публичной сборки.
 
 ### 2. Store → moderation
 

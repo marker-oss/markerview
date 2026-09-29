@@ -67,6 +67,32 @@ func TestPublishReplySuccessAndUnsupported(t *testing.T) {
 	}
 }
 
+func TestPublishReplyRejectsImportedReview(t *testing.T) {
+	s := newAuthTestServer(t)
+	pub := &fakePublisher{}
+	s.cfg.ResolveReplyPublisher = func(_ context.Context, _ string) (marketplace.ReplyPublisher, error) { return pub, nil }
+	rating := 5
+	res, err := s.store.UpsertReview(context.Background(), marketplace.Review{
+		Marketplace: "wb", ExternalReviewID: "imported-1", ExternalProductID: "p1",
+		SourceKind: marketplace.SourceKindImported, SourceMethod: marketplace.SourceMethodCSV,
+		Rating: &rating, Text: "t", CreatedAtMP: testTime(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.publishReply(context.Background(), res.Review)
+	if pub.calls != 0 {
+		t.Fatalf("publisher calls = %d, want 0", pub.calls)
+	}
+	got, err := s.store.ReviewByID(context.Background(), res.Review.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ReplyPublishState == nil || *got.ReplyPublishState != "unsupported" {
+		t.Fatalf("state = %v, want unsupported", got.ReplyPublishState)
+	}
+}
+
 func TestPublishReplyFailureRecorded(t *testing.T) {
 	s := newAuthTestServer(t)
 	ctx := context.Background()

@@ -64,17 +64,25 @@ func (s *Store) SaveMarketplaceCredential(ctx context.Context, patch Marketplace
 		err := tx.Where("tenant_id = ? AND marketplace = ?", TenantIDFromCtx(ctx), patch.Marketplace).
 			First(&saved).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			saved = MarketplaceCredential{
-				TenantID:    TenantIDFromCtx(ctx),
-				Marketplace: patch.Marketplace,
-				Enabled:     true,
-				Payload:     "{}",
+			if patch.Enabled != nil && !*patch.Enabled {
+				saved = MarketplaceCredential{TenantID: TenantIDFromCtx(ctx), Marketplace: patch.Marketplace, Enabled: false, Payload: "{}"}
+			} else {
+				limits, err := planLimitsForDB(tx, ctx)
+				if err != nil {
+					return err
+				}
+				var count int64
+				if err := tx.Model(&MarketplaceCredential{}).Where("tenant_id = ? AND enabled = ?", TenantIDFromCtx(ctx), true).Count(&count).Error; err != nil {
+					return err
+				}
+				if limits.MaxMarketplaces > 0 && count >= int64(limits.MaxMarketplaces) {
+					return ErrMarketplaceLimit
+				}
+				saved = MarketplaceCredential{TenantID: TenantIDFromCtx(ctx), Marketplace: patch.Marketplace, Enabled: true, Payload: "{}"}
 			}
 		} else if err != nil {
 			return err
 		}
-		// The stored row may be sealed; decrypt before merging (no-op for
-		// plaintext legacy rows or when no key is configured).
 		saved.Payload = s.decryptPayload(saved.Payload)
 		payload := map[string]string{}
 		if saved.Payload != "" {
@@ -83,10 +91,9 @@ func (s *Store) SaveMarketplaceCredential(ctx context.Context, patch Marketplace
 			}
 		}
 		for key, value := range patch.Values {
-			if value == "" {
-				continue
+			if value != "" {
+				payload[key] = value
 			}
-			payload[key] = value
 		}
 		body, err := json.Marshal(payload)
 		if err != nil {

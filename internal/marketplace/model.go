@@ -5,23 +5,43 @@ import (
 	"time"
 )
 
+const (
+	SourceKindAPI      = "api"
+	SourceKindImported = "imported"
+
+	SourceMethodAPI             = "api"
+	SourceMethodScraper         = "scraper"
+	SourceMethodCSV             = "csv"
+	SourceMethodXLSX            = "xlsx"
+	SourceMethodExternalService = "external_service"
+
+	IdentityKindReal      = "real"
+	IdentityKindSynthetic = "synthetic"
+)
+
 type Review struct {
-	Marketplace       string
-	ExternalReviewID  string
-	ExternalProductID string
-	SellerArticle     string
-	Rating            *int
-	Title             string
-	AuthorName        string
-	Text              string
-	Pros              string
-	Cons              string
-	CreatedAtMP       time.Time
-	UpdatedAtMP       *time.Time
-	Answer            *Answer
-	Media             []Media
-	ProductName       string // raw product title from the marketplace payload
-	ProductPrice      string // raw price string from the marketplace payload, e.g. "1 799 ₽"
+	Marketplace        string
+	ExternalReviewID   string
+	ExternalProductID  string
+	SellerArticle      string
+	SourceKind         string
+	SourceMethod       string
+	SourceFingerprint  string
+	IdentityKind       string
+	IdentityScope      string
+	SourceConnectionID uint
+	Rating             *int
+	Title              string
+	AuthorName         string
+	Text               string
+	Pros               string
+	Cons               string
+	CreatedAtMP        time.Time
+	UpdatedAtMP        *time.Time
+	Answer             *Answer
+	Media              []Media
+	ProductName        string // raw product title from the marketplace payload
+	ProductPrice       string // raw price string from the marketplace payload, e.g. "1 799 ₽"
 	// Recommend is the marketplace per-review "recommended" flag (YM). Used
 	// only for aggregate recommendPercent; zero value = unknown/absent.
 	Recommend bool

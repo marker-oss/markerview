@@ -1,0 +1,7 @@
+{:paths ["src"]
+ :deps {org.clojure/clojure {:mvn/version "1.12.0"}
+        org.clojure/data.json {:mvn/version "2.5.1"}}
+ :aliases {:run {:main-opts ["-m" "external-sources.main"]}
+           :test {:extra-paths ["test"]
+                  :main-opts ["-e"
+                              "(require 'clojure.test 'external-sources.worker-integration-test) (let [r (clojure.test/run-tests 'external-sources.worker-integration-test)] (System/exit (if (zero? (+ (:fail r) (:error r))) 0 1)))"]}}}

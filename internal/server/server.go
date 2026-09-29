@@ -125,6 +125,8 @@ type Server struct {
 	ozonProbeAt      time.Time
 	ozonProbeWarning string
 
+	importMu       sync.Mutex
+	importPreviews map[string]importPreview
 	// tenantExportScope resolves the per-tenant static export subdirectory
 	// (the tenant's public key) on SaaS. nil keeps the legacy shared
 	// reviews-data path for single-tenant deployments.
@@ -212,6 +214,7 @@ func New(store *store.Store, cfg Config, logger *slog.Logger) *Server {
 		logger:               logger,
 		productLinksByTenant: make(map[uint]map[string]string),
 		siteLinksJobs:        make(map[uint]siteLinksStatus),
+		importPreviews:       make(map[string]importPreview),
 	}
 }
 
@@ -244,6 +247,11 @@ func (s *Server) handler() http.Handler {
 	}
 	mux.Handle("/admin/", s.adminMux())
 	mux.Handle("/", noCacheStatic(widgetAndStaticHandler(s.cfg.StaticDir)))
+	mux.HandleFunc("GET /external/v1/worker/jobs", s.handleWorkerJobs)
+	mux.HandleFunc("POST /external/v1/worker/jobs/{id}/claim", s.handleWorkerClaim)
+	mux.HandleFunc("POST /external/v1/worker/jobs/{id}/result", s.handleWorkerResult)
+	mux.HandleFunc("POST /external/v1/worker/jobs/{id}/finish", s.handleWorkerFinish)
+	mux.HandleFunc("POST /external/v1/worker/jobs/{id}/heartbeat", s.handleWorkerHeartbeat)
 
 	return securityHeaders(s.tenantScope(s.tenantRateLimit(s.cors(s.logRequests(mux)))))
 }
@@ -389,12 +397,15 @@ func (s *Server) adminMux() *http.ServeMux {
 	protected.Handle("PUT /admin/api/articles/{article}/pins", requireCSRF(http.HandlerFunc(s.handleReplaceArticlePins)))
 	protected.Handle("DELETE /admin/api/articles/{article}/pins/{reviewID}", requireCSRF(http.HandlerFunc(s.handleRemoveArticlePin)))
 	protected.HandleFunc("GET /admin/api/version", s.handleVersion)
-	protected.HandleFunc("GET /admin/api/tenant", s.handleTenant)
 	protected.HandleFunc("GET /admin/api/dashboard", s.handleDashboard)
+	protected.HandleFunc("GET /admin/api/counts", s.handleCounts)
+	protected.HandleFunc("GET /admin/api/tenant", s.handleTenant)
+	protected.Handle("DELETE /admin/api/tenant", requireCSRF(http.HandlerFunc(s.handleDeleteTenant)))
 	protected.HandleFunc("GET /admin/api/diagnostics", s.handleDiagnostics)
 	protected.Handle("POST /admin/api/diagnostics/probe", requireCSRF(http.HandlerFunc(s.handleDiagnosticsProbe)))
-	protected.HandleFunc("GET /admin/api/counts", s.handleCounts)
 	protected.HandleFunc("GET /admin/api/marketplaces", s.handleMarketplaces)
+	protected.Handle("POST /admin/api/imports/ozon/preview", requireCSRF(http.HandlerFunc(s.handleOzonImportPreview)))
+	protected.Handle("POST /admin/api/imports/ozon/commit", requireCSRF(http.HandlerFunc(s.handleOzonImportCommit)))
 	protected.Handle("PUT /admin/api/marketplaces/{id}/credentials", requireCSRF(http.HandlerFunc(s.handleSaveMarketplaceCredentials)))
 	protected.HandleFunc("GET /admin/api/settings", s.handleGetSettings)
 	protected.Handle("PUT /admin/api/settings", requireCSRF(http.HandlerFunc(s.handlePutSettings)))
@@ -410,6 +421,9 @@ func (s *Server) adminMux() *http.ServeMux {
 	protected.Handle("POST /admin/api/logout", requireCSRF(http.HandlerFunc(s.handleLogout)))
 	protected.HandleFunc("GET /admin/api/questions", s.handleAdminQuestions)
 	protected.Handle("PUT /admin/api/questions/{id}/answer", requireCSRF(http.HandlerFunc(s.handleAdminQuestionAnswer)))
+	protected.Handle("POST /admin/api/external-sources", requireCSRF(http.HandlerFunc(s.handleAdminSourceCreate)))
+	protected.Handle("POST /admin/api/external-sources/{id}/targets", requireCSRF(http.HandlerFunc(s.handleAdminTargetCreate)))
+	protected.Handle("POST /admin/api/external-sources/{id}/targets/{target}/queue", requireCSRF(http.HandlerFunc(s.handleAdminTargetQueue)))
 	protected.Handle("POST /admin/api/questions/{id}/answer/retry", requireCSRF(http.HandlerFunc(s.handleAdminQuestionAnswerRetry)))
 	protected.HandleFunc("GET /admin/api/dsr/lookup", s.handleDSRLookup)
 	protected.HandleFunc("GET /admin/api/dsr/export", s.handleDSRExport)

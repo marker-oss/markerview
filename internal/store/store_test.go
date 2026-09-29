@@ -97,6 +97,83 @@ func TestUpsertReviewIsIdempotentAndSnapshotsMedia(t *testing.T) {
 	}
 }
 
+func TestUpsertReviewPersistsImportedProvenance(t *testing.T) {
+	s := newTestStore(t)
+	_, err := s.UpsertReview(context.Background(), marketplace.Review{
+		Marketplace:       "ozon",
+		ExternalReviewID:  "scraper-1",
+		ExternalProductID: "sku-1",
+		SourceKind:        marketplace.SourceKindImported,
+		SourceMethod:      marketplace.SourceMethodScraper,
+		SourceFingerprint: "sha256:fingerprint-1",
+		CreatedAtMP:       time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("upsert imported review: %v", err)
+	}
+	var review Review
+	if err := s.db.First(&review, "marketplace = ? AND external_review_id = ?", "ozon", "scraper-1").Error; err != nil {
+		t.Fatalf("load review: %v", err)
+	}
+	if review.SourceKind != marketplace.SourceKindImported || review.SourceMethod != marketplace.SourceMethodScraper || review.SourceFingerprint != "sha256:fingerprint-1" {
+		t.Fatalf("provenance = %q/%q/%q", review.SourceKind, review.SourceMethod, review.SourceFingerprint)
+	}
+}
+
+func TestUpsertReviewDoesNotDowngradeAPIProvenance(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	base := marketplace.Review{
+		Marketplace:      "ozon",
+		ExternalReviewID: "review-1",
+		CreatedAtMP:      time.Now().UTC(),
+		SourceKind:       marketplace.SourceKindAPI,
+		SourceMethod:     marketplace.SourceMethodAPI,
+	}
+	if _, err := s.UpsertReview(ctx, base); err != nil {
+		t.Fatalf("seed api review: %v", err)
+	}
+	base.SourceKind = marketplace.SourceKindImported
+	base.SourceMethod = marketplace.SourceMethodScraper
+	if _, err := s.UpsertReview(ctx, base); err != nil {
+		t.Fatalf("upsert imported review: %v", err)
+	}
+	got, err := s.ReviewByID(ctx, 1)
+	if err != nil {
+		t.Fatalf("load review: %v", err)
+	}
+	if got.SourceKind != marketplace.SourceKindAPI || got.SourceMethod != marketplace.SourceMethodAPI {
+		t.Fatalf("api provenance downgraded to %q/%q", got.SourceKind, got.SourceMethod)
+	}
+}
+
+func TestUpsertReviewPromotesImportedProvenanceToAPI(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	base := marketplace.Review{
+		Marketplace:      "ozon",
+		ExternalReviewID: "review-2",
+		CreatedAtMP:      time.Now().UTC(),
+		SourceKind:       marketplace.SourceKindImported,
+		SourceMethod:     marketplace.SourceMethodScraper,
+	}
+	if _, err := s.UpsertReview(ctx, base); err != nil {
+		t.Fatalf("seed imported review: %v", err)
+	}
+	base.SourceKind = marketplace.SourceKindAPI
+	base.SourceMethod = marketplace.SourceMethodAPI
+	if _, err := s.UpsertReview(ctx, base); err != nil {
+		t.Fatalf("promote review: %v", err)
+	}
+	got, err := s.ReviewByID(ctx, 1)
+	if err != nil {
+		t.Fatalf("load review: %v", err)
+	}
+	if got.SourceKind != marketplace.SourceKindAPI || got.SourceMethod != marketplace.SourceMethodAPI {
+		t.Fatalf("imported provenance not promoted: %q/%q", got.SourceKind, got.SourceMethod)
+	}
+}
+
 func TestUpsertYandexVideoKeepsPosterWhenLookupFails(t *testing.T) {
 	ctx := context.Background()
 	s := newTestStore(t)

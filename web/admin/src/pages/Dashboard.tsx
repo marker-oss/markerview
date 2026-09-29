@@ -26,6 +26,7 @@ function sourceLabel(value: string) {
   return value
 }
 
+
 export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null)
   const [error, setError] = useState('')
@@ -188,7 +189,7 @@ export default function Dashboard() {
               <span className="k" style={{ display: 'block' }}>
                 {sourceLabel(run.Marketplace)} · получено {run.ReviewsSeen}, сохранено {run.ReviewsUpserted}
               </span>
-              {run.ErrorText && <span className="d">{run.ErrorText}</span>}
+              {run.ErrorText && <span className="d">{run.Marketplace === 'ozon' && run.ErrorText.includes('not available with existing subscription') ? 'Ozon сообщает, что получение отзывов через Seller API недоступно с текущей подпиской продавца. Проверьте тариф или услугу Ozon с доступом к отзывам: подписка MarkerView не предоставляет этот доступ.' : run.ErrorText}</span>}
             </span>
             <span className="v thin">{new Date(run.StartedAt).toLocaleString()}</span>
           </div>

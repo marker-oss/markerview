@@ -20,6 +20,7 @@ coverage.out
 # Private working notes (plans, specs, research) — never published
 docs/superpowers/
 /docs/product/
+/docs/platform/
 /ROADMAP.md
 
 # Landing (markerview.ru): private — contains seller requisites and the public offer
@@ -31,3 +32,7 @@ docs/superpowers/
 # SDD worktrees
 /.worktrees/
 /web/reviews-widget/reviews-data/
+
+# Client SSH credentials — never commit, never ship in images
+/.secrets/
+/scraper/

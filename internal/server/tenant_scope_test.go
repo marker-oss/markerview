@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -188,5 +189,50 @@ func TestCrossTenantOriginRejected(t *testing.T) {
 	// Non-browser clients (curl, no Origin header) keep working.
 	if code := get(""); code != http.StatusOK {
 		t.Fatalf("no origin status = %d, want 200", code)
+	}
+}
+
+func TestAdminTenantIdentityRouteReturnsCurrentTenant(t *testing.T) {
+	s := newAuthTestServer(t)
+	session := loginTestAdmin(t, s)
+	req := httptest.NewRequest(http.MethodGet, "/admin/api/tenant", nil)
+	req.AddCookie(session)
+	rec := httptest.NewRecorder()
+	s.adminMux().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("tenant identity status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	var got struct {
+		ID     uint   `json:"id"`
+		Plan   string `json:"plan"`
+		Status string `json:"status"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.ID != store.DefaultTenantID || got.Plan == "" || got.Status == "" {
+		t.Fatalf("unexpected tenant identity: %+v", got)
+	}
+}
+func TestDeleteTenantRequiresPasswordAndRemovesSession(t *testing.T) {
+	s := newAuthTestServer(t)
+	ctx := context.Background()
+	tenant, err := s.store.CreateTenant(ctx, "delete-http", "https://shop.example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.store.DB().Model(&store.Tenant{}).Where("id = ?", tenant.ID).Update("plan", "base").Error; err != nil {
+		t.Fatal(err)
+	}
+	session := loginTestAdmin(t, s)
+	csrf := getCSRFToken(t, s, session)
+	req := httptest.NewRequest(http.MethodDelete, "/admin/api/tenant", strings.NewReader(`{"password":"wrong"}`))
+	req.AddCookie(session)
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: csrf})
+	req.Header.Set(csrfHeaderName, csrf)
+	rec := httptest.NewRecorder()
+	s.adminMux().ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("wrong password status = %d", rec.Code)
 	}
 }

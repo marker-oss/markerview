@@ -18,3 +18,5 @@ deploy/systemd
 /cloud
 testdata
 web/reviews-widget/test
+/.secrets
+/scraper/

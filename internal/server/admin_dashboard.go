@@ -65,6 +65,12 @@ func (s *Server) handleTriggerSync(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
+	if result.Started == nil {
+		result.Started = []string{}
+	}
+	if result.Busy == nil {
+		result.Busy = []string{}
+	}
 	if len(result.Started) == 0 && len(result.Busy) > 0 {
 		writeError(w, http.StatusConflict, errSyncBusy)
 		return
