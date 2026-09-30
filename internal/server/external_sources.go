@@ -131,17 +131,19 @@ func (s *Server) handleAdminTargetQueue(w http.ResponseWriter, r *http.Request) 
 
 // automaticImportTarget deliberately excludes worker configuration and cursors.
 type automaticImportTarget struct {
-	ID                uint   `json:"id"`
-	URL               string `json:"url"`
-	ExternalProductID string `json:"external_product_id"`
-	SellerArticle     string `json:"seller_article"`
-	Label             string `json:"label"`
-	Enabled           bool   `json:"enabled"`
-	LastStatus        string `json:"last_status"`
+	ID                uint      `json:"id"`
+	URL               string    `json:"url"`
+	ExternalProductID string    `json:"external_product_id"`
+	SellerArticle     string    `json:"seller_article"`
+	Label             string    `json:"label"`
+	Enabled           bool      `json:"enabled"`
+	LastStatus        string    `json:"last_status"`
+	LastError         string    `json:"last_error,omitempty"`
+	LastSyncAt        time.Time `json:"last_sync_at"`
 }
 
 func automaticImportTargetJSON(t store.ScrapeTarget) automaticImportTarget {
-	return automaticImportTarget{t.ID, t.URL, t.ExternalProductID, t.SellerArticle, t.Label, t.Enabled, t.LastStatus}
+	return automaticImportTarget{t.ID, t.URL, t.ExternalProductID, t.SellerArticle, t.Label, t.Enabled, t.LastStatus, t.LastError, t.UpdatedAt}
 }
 
 func (s *Server) automaticImportTargets(r *http.Request) *gorm.DB {

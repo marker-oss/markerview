@@ -111,6 +111,9 @@ func TestAutomaticImportTenantAPI(t *testing.T) {
 		t.Fatalf("changed duplicate %+v", repeated)
 	}
 	check(request("POST", base+"/targets", `{"url":"https://www.ozon.ru/product/item-43/"}`), 409)
+	if err := s.store.DB().Model(&store.ScrapeTarget{}).Where("id = ?", target.ID).Updates(map[string]any{"last_status": "failed", "last_error": "worker timeout", "updated_at": time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)}).Error; err != nil {
+		t.Fatal(err)
+	}
 	list := request("GET", base, "")
 	check(list, 200)
 	var state struct {
@@ -118,13 +121,16 @@ func TestAutomaticImportTenantAPI(t *testing.T) {
 		Limit       int  `json:"limit"`
 		ActiveCount int  `json:"active_count"`
 		Targets     []struct {
-			ID uint `json:"id"`
+			ID         uint   `json:"id"`
+			LastStatus string `json:"last_status"`
+			LastError  string `json:"last_error"`
+			LastSyncAt string `json:"last_sync_at"`
 		} `json:"targets"`
 	}
 	if err := json.Unmarshal(list.Body.Bytes(), &state); err != nil {
 		t.Fatal(err)
 	}
-	if !state.Enabled || state.Limit != 1 || state.ActiveCount != 1 || len(state.Targets) != 1 || state.Targets[0].ID != target.ID {
+	if !state.Enabled || state.Limit != 1 || state.ActiveCount != 1 || len(state.Targets) != 1 || state.Targets[0].ID != target.ID || state.Targets[0].LastStatus != "failed" || state.Targets[0].LastError != "worker timeout" || state.Targets[0].LastSyncAt == "" {
 		t.Fatalf("state %+v", state)
 	}
 	for _, action := range []string{"queue", "disable"} {
