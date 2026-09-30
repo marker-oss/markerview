@@ -125,15 +125,36 @@ curl --fail --silent --show-error http://127.0.0.1:8080/healthz
 `PUT /admin/api/saas/tenants/{id}/automatic-import` с JSON
 `{"enabled":true,"limit":N}`. Лимит считает только включённые scraper-targets:
 отключённый товар освобождает место, а `limit: 0` не разрешает добавление или
-постановку job в очередь. Оператор не передаёт tenant admin worker token.
+постановку job в очередь. В hosted automatic-import flow worker token и его hash
+остаются только у инфраструктуры/worker и не выдаются tenant admin.
 
 После включения tenant admin открывает **Настройки → Автоматический импорт** и
 проходит поток: **добавить товары → поставить в очередь → обновить статус**.
-Сервер выбирает активное scraper-соединение этого tenant, создаёт target/job с
-его tenant и server-owned product mapping, а страница показывает `queued`,
-`running`, `succeeded`, `failed`, последнюю ошибку и время синхронизации.
+Для создания сервер выбирает ровно одно активное соединение этого tenant с
+`kind=worker`, `provider=ozon`, `method=scraper`; проверка повторяется внутри
+транзакции с блокировкой соединения. Сервер создаёт target/job с его tenant и
+server-owned product mapping. `last_status` становится `queued` атомарно с queue
+и `running` с claim (внутренний job status — `leased`), затем `succeeded`/`failed`.
+`last_sync_at` — время последней принятой завершённой попытки, включая неудачную;
+queue, claim и отключение его не меняют. Миграция восстанавливает время только из
+завершённых jobs того же tenant/connection; без таких данных поле отсутствует.
 Tenant B не видит targets tenant A и не может поставить их jobs в очередь;
 изоляция определяется session/connection context, не полями client/worker JSON.
+
+Контролируемый **HTTP 503** при создании означает отсутствие или несколько
+подходящих tenant-owned соединений либо потерю доступности выбранного соединения
+до записи. При queue 503 означает, что уже привязанное соединение отсутствует,
+неактивно, принадлежит другому tenant или перестало быть Ozon worker scraper.
+Другие соединения не влияют на выбор для уже привязанного target; сервер не
+подменяет его и не использует operator connection. Новые target/job при 503 не
+создаются; сначала исправьте provisioning. Ошибки БД не маскируются под 503.
+
+**Существующее self-hosted исключение:** при `REVIEWS_COMPAT_SINGLE_TENANT=true`
+(или unset) legacy `POST /admin/api/external-sources` возвращает token
+аутентифицированному администратору; создание targets и queue через legacy routes
+также сохранены. Требуются session и CSRF. При hosted strict mode (`false`) все
+три legacy mutation routes возвращают 403. Правило «token только инфраструктуре»
+относится к hosted automatic-import, не меняет этот self-hosted контракт.
 
 Локальная проверка использует изолированную тестовую БД/server и не создаёт
 production targets/jobs. Production provisioning и rollout выполняются отдельным

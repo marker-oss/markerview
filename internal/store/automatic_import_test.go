@@ -160,3 +160,71 @@ func TestAutomaticImportHelpersRecheckCurrentPolicy(t *testing.T) {
 		t.Fatal("queue helper ignored reduced limit")
 	}
 }
+
+func TestAutomaticImportRejectsIneligibleConnections(t *testing.T) {
+	for _, change := range []struct {
+		field string
+		value any
+	}{
+		{"tenant_id", DefaultTenantID},
+		{"status", "disabled"},
+		{"kind", "api"},
+		{"provider", "wb"},
+		{"method", "external_service"},
+	} {
+		t.Run(change.field, func(t *testing.T) {
+			s := newTestStore(t)
+			ctx := context.Background()
+			tenant, err := s.CreateTenant(ctx, "client", "https://client.example")
+			if err != nil {
+				t.Fatal(err)
+			}
+			owner := WithTenant(ctx, tenant.ID)
+			if err := s.SetAutomaticImportPolicy(ctx, tenant.ID, true, 3); err != nil {
+				t.Fatal(err)
+			}
+			conn := SourceConnection{Kind: "worker", Provider: "ozon", Method: "scraper", Name: "worker", Status: "active", TokenHash: HashSourceToken("worker")}
+			if err := s.CreateSourceConnection(owner, &conn); err != nil {
+				t.Fatal(err)
+			}
+			target := ScrapeTarget{SourceConnectionID: conn.ID, URL: "https://www.ozon.ru/product/item-42/", Marketplace: "ozon", ExternalProductID: "42", Enabled: true}
+			if err := s.CreateAutomaticImportTarget(owner, &target, 0); err != nil {
+				t.Fatal(err)
+			}
+			// Change eligibility after selection, as an operator update could do.
+			if err := s.DB().Model(&conn).UpdateColumn(change.field, change.value).Error; err != nil {
+				t.Fatal(err)
+			}
+			second := ScrapeTarget{SourceConnectionID: conn.ID, URL: "https://www.ozon.ru/product/item-43/", Marketplace: "ozon", ExternalProductID: "43", Enabled: true}
+			if err := s.CreateAutomaticImportTarget(owner, &second, 0); !errors.Is(err, ErrAutomaticImportConnection) {
+				t.Errorf("create connection error = %v", err)
+			}
+			if _, err := s.QueueAutomaticImportJob(owner, target.ID); !errors.Is(err, ErrAutomaticImportConnection) {
+				t.Errorf("queue connection error = %v", err)
+			}
+			assertCount(t, s, &ScrapeTarget{}, 1)
+			assertCount(t, s, &ScrapeJob{}, 0)
+		})
+	}
+}
+
+func TestAutomaticImportCreateRejectsAmbiguousConnections(t *testing.T) {
+	s := newTestStore(t)
+	ctx := WithTenant(context.Background(), DefaultTenantID)
+	if err := s.SetAutomaticImportPolicy(ctx, DefaultTenantID, true, 2); err != nil {
+		t.Fatal(err)
+	}
+	var selected uint
+	for _, name := range []string{"one", "two"} {
+		conn := SourceConnection{Kind: "worker", Provider: "ozon", Method: "scraper", Name: name, Status: "active", TokenHash: HashSourceToken(name)}
+		if err := s.CreateSourceConnection(ctx, &conn); err != nil {
+			t.Fatal(err)
+		}
+		selected = conn.ID
+	}
+	target := ScrapeTarget{SourceConnectionID: selected, URL: "https://www.ozon.ru/product/item-42/", Marketplace: "ozon", ExternalProductID: "42", Enabled: true}
+	if err := s.CreateAutomaticImportTarget(ctx, &target, 0); !errors.Is(err, ErrAutomaticImportConnection) {
+		t.Fatalf("ambiguous connection error = %v", err)
+	}
+	assertCount(t, s, &ScrapeTarget{}, 0)
+}

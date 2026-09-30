@@ -6,13 +6,15 @@ import (
 	"encoding/hex"
 	"errors"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 	"time"
 )
 
 var (
-	ErrAutomaticImportLimit     = errors.New("automatic import limit exhausted")
-	ErrAutomaticImportActiveJob = errors.New("target already has an active job")
-	ErrAutomaticImportDisabled  = errors.New("automatic import is disabled")
+	ErrAutomaticImportLimit      = errors.New("automatic import limit exhausted")
+	ErrAutomaticImportActiveJob  = errors.New("target already has an active job")
+	ErrAutomaticImportDisabled   = errors.New("automatic import is disabled")
+	ErrAutomaticImportConnection = errors.New("tenant Ozon worker scraper connection unavailable or ambiguous")
 )
 
 type SourceConnection struct {
@@ -43,6 +45,7 @@ type ScrapeTarget struct {
 	LastCursor         string `gorm:"size:512"`
 	LastStatus         string `gorm:"size:16"`
 	LastError          string `gorm:"size:512"`
+	LastSyncAt         *time.Time
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
 }
@@ -130,8 +133,7 @@ func (s *Store) CreateScrapeTarget(ctx context.Context, t *ScrapeTarget) error {
 
 // CreateAutomaticImportTarget locks the tenant row before checking quota and
 // creating a target, so concurrent server instances cannot both consume the
-// final slot. The caller has already canonicalized and selected a tenant-owned
-// scraper connection; this method verifies both again in the transaction.
+// final slot. Connection eligibility is checked and locked in the transaction.
 func (s *Store) CreateAutomaticImportTarget(ctx context.Context, t *ScrapeTarget, _ int) error {
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		tenant := TenantIDFromCtx(ctx)
@@ -145,6 +147,13 @@ func (s *Store) CreateAutomaticImportTarget(ctx context.Context, t *ScrapeTarget
 		if !policy.AutomaticImportEnabled {
 			return ErrAutomaticImportDisabled
 		}
+		connectionID, err := automaticImportConnectionDB(tx, tenant, 0)
+		if err != nil {
+			return err
+		}
+		if t.SourceConnectionID != connectionID {
+			return ErrAutomaticImportConnection
+		}
 		var count int64
 		if err := tx.Model(&ScrapeTarget{}).Joins("JOIN source_connections ON source_connections.id = scrape_targets.source_connection_id AND source_connections.tenant_id = scrape_targets.tenant_id").Where("scrape_targets.tenant_id = ? AND scrape_targets.enabled = ? AND source_connections.method = ?", tenant, true, "scraper").Count(&count).Error; err != nil {
 			return err
@@ -157,6 +166,9 @@ func (s *Store) CreateAutomaticImportTarget(ctx context.Context, t *ScrapeTarget
 			return errors.New("ambiguous legacy scrape targets require manual resolution")
 		}
 		if len(existing) == 1 {
+			if existing[0].SourceConnectionID != connectionID {
+				return ErrAutomaticImportConnection
+			}
 			*t = existing[0]
 			return nil
 		}
@@ -188,6 +200,13 @@ func (s *Store) QueueAutomaticImportJob(ctx context.Context, targetID uint) (Scr
 		if err := tx.Where("id = ? AND tenant_id = ? AND enabled = ?", targetID, tenant, true).First(&target).Error; err != nil {
 			return err
 		}
+		connectionID, err := automaticImportConnectionDB(tx, tenant, target.SourceConnectionID)
+		if err != nil {
+			return err
+		}
+		if connectionID != target.SourceConnectionID {
+			return ErrAutomaticImportConnection
+		}
 		var count int64
 		if err := tx.Model(&ScrapeTarget{}).Joins("JOIN source_connections ON source_connections.id = scrape_targets.source_connection_id AND source_connections.tenant_id = scrape_targets.tenant_id").Where("scrape_targets.tenant_id = ? AND scrape_targets.enabled = ? AND source_connections.method = ?", tenant, true, "scraper").Count(&count).Error; err != nil {
 			return err
@@ -202,19 +221,48 @@ func (s *Store) QueueAutomaticImportJob(ctx context.Context, targetID uint) (Scr
 		if active != 0 {
 			return ErrAutomaticImportActiveJob
 		}
-		job = ScrapeJob{TenantID: tenant, SourceConnectionID: target.SourceConnectionID, TargetID: target.ID, CursorBefore: target.LastCursor}
-		return tx.Create(&job).Error
+		job = ScrapeJob{TenantID: tenant, SourceConnectionID: target.SourceConnectionID, TargetID: target.ID, Status: "queued", CursorBefore: target.LastCursor}
+		if err := tx.Create(&job).Error; err != nil {
+			return err
+		}
+		return tx.Model(&target).Updates(map[string]any{"last_status": "queued", "last_error": ""}).Error
 	})
 	return job, err
 }
+
+// The caller holds the tenant write lock. Lock eligible connections as well so
+// revocation cannot race the target/job insert on PostgreSQL; SQLite serializes
+// writers with the tenant UPDATE. Creation must select exactly one connection;
+// queueing checks the connection already bound to the target.
+func automaticImportConnectionDB(tx *gorm.DB, tenant, connectionID uint) (uint, error) {
+	query := tx.Where("tenant_id = ? AND kind = ? AND provider = ? AND method = ? AND status = ?", tenant, "worker", "ozon", "scraper", "active")
+	if connectionID != 0 {
+		query = query.Where("id = ?", connectionID)
+	}
+	var connections []SourceConnection
+	if err := query.Clauses(clause.Locking{Strength: "UPDATE"}).Order("id").Limit(2).Find(&connections).Error; err != nil {
+		return 0, err
+	}
+	if len(connections) != 1 {
+		return 0, ErrAutomaticImportConnection
+	}
+	return connections[0].ID, nil
+}
+
 func (s *Store) QueueScrapeJob(ctx context.Context, targetID uint) (ScrapeJob, error) {
 	tenant := TenantIDFromCtx(ctx)
 	var t ScrapeTarget
 	if err := s.db.WithContext(ctx).Where("id = ? AND tenant_id = ? AND enabled = ?", targetID, tenant, true).First(&t).Error; err != nil {
 		return ScrapeJob{}, err
 	}
-	j := ScrapeJob{TenantID: tenant, SourceConnectionID: t.SourceConnectionID, TargetID: t.ID, CursorBefore: t.LastCursor}
-	return j, s.db.WithContext(ctx).Create(&j).Error
+	j := ScrapeJob{TenantID: tenant, SourceConnectionID: t.SourceConnectionID, TargetID: t.ID, Status: "queued", CursorBefore: t.LastCursor}
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&j).Error; err != nil {
+			return err
+		}
+		return tx.Model(&t).Updates(map[string]any{"last_status": "queued", "last_error": ""}).Error
+	})
+	return j, err
 }
 
 func (s *Store) QueuedJobs(ctx context.Context, connectionID uint) ([]ScrapeJob, error) {
@@ -246,15 +294,20 @@ func (s *Store) ClaimScrapeJob(ctx context.Context, connectionID, jobID uint, le
 		expired = "julianday(lease_until) < julianday(?)"
 	}
 	condition := "id = ? AND source_connection_id = ? AND tenant_id = ? AND (status = 'queued' OR (status = 'leased' AND " + expired + "))"
-	res := s.db.WithContext(ctx).Model(&ScrapeJob{}).Where(condition, jobID, connectionID, TenantIDFromCtx(ctx), now).Updates(map[string]any{"status": "leased", "lease_until": until, "attempts": gorm.Expr("attempts + 1"), "started_at": now})
-	if res.Error != nil {
-		return ScrapeJob{}, res.Error
-	}
-	if res.RowsAffected != 1 {
-		return ScrapeJob{}, gorm.ErrRecordNotFound
-	}
 	var j ScrapeJob
-	err := s.db.WithContext(ctx).Where("id = ? AND source_connection_id = ?", jobID, connectionID).First(&j).Error
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		res := tx.Model(&ScrapeJob{}).Where(condition, jobID, connectionID, TenantIDFromCtx(ctx), now).Updates(map[string]any{"status": "leased", "lease_until": until, "attempts": gorm.Expr("attempts + 1"), "started_at": now})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected != 1 {
+			return gorm.ErrRecordNotFound
+		}
+		if err := tx.Where("id = ? AND source_connection_id = ? AND tenant_id = ?", jobID, connectionID, TenantIDFromCtx(ctx)).First(&j).Error; err != nil {
+			return err
+		}
+		return tx.Model(&ScrapeTarget{}).Where("id = ? AND tenant_id = ? AND source_connection_id = ?", j.TargetID, j.TenantID, connectionID).Updates(map[string]any{"last_status": "running", "last_error": ""}).Error
+	})
 	return j, err
 }
 func (s *Store) HeartbeatScrapeJob(ctx context.Context, connectionID, jobID uint, attempt int, lease time.Duration) (ScrapeJob, error) {
@@ -300,9 +353,9 @@ func (s *Store) FinishScrapeJob(ctx context.Context, connectionID, jobID uint, s
 			return err
 		}
 		if status == "succeeded" {
-			return tx.Model(&ScrapeTarget{}).Where("id = ? AND tenant_id = ?", j.TargetID, j.TenantID).Updates(map[string]any{"last_cursor": cursor, "last_status": status, "last_error": ""}).Error
+			return tx.Model(&ScrapeTarget{}).Where("id = ? AND tenant_id = ?", j.TargetID, j.TenantID).Updates(map[string]any{"last_cursor": cursor, "last_status": status, "last_error": "", "last_sync_at": now}).Error
 		}
-		return tx.Model(&ScrapeTarget{}).Where("id = ? AND tenant_id = ?", j.TargetID, j.TenantID).Updates(map[string]any{"last_status": status, "last_error": run.Error}).Error
+		return tx.Model(&ScrapeTarget{}).Where("id = ? AND tenant_id = ?", j.TargetID, j.TenantID).Updates(map[string]any{"last_status": status, "last_error": run.Error, "last_sync_at": now}).Error
 	})
 }
 

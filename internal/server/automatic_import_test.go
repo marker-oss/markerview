@@ -75,6 +75,14 @@ func TestAutomaticImportTenantAPI(t *testing.T) {
 	if err := s.store.CreateSourceConnection(owner, &connection); err != nil {
 		t.Fatal(err)
 	}
+	additional := store.SourceConnection{Kind: "worker", Provider: "ozon", Method: "scraper", Name: "second", TokenHash: store.HashSourceToken("second-secret"), Status: "active"}
+	if err := s.store.CreateSourceConnection(owner, &additional); err != nil {
+		t.Fatal(err)
+	}
+	check(request("POST", base+"/targets", body), 503)
+	if err := s.store.DB().Model(&additional).Update("status", "disabled").Error; err != nil {
+		t.Fatal(err)
+	}
 	for _, field := range []string{`"tenant_id":1`, `"source_connection_id":1`, `"method":"api"`, `"marketplace":"wb"`} {
 		check(request("POST", base+"/targets", `{"url":"https://www.ozon.ru/product/item-42/",`+field+`}`), 400)
 	}
@@ -116,7 +124,14 @@ func TestAutomaticImportTenantAPI(t *testing.T) {
 		t.Fatalf("changed duplicate %+v", repeated)
 	}
 	check(request("POST", base+"/targets", `{"url":"https://www.ozon.ru/product/item-43/"}`), 409)
-	if err := s.store.DB().Model(&store.ScrapeTarget{}).Where("id = ?", target.ID).Updates(map[string]any{"last_status": "failed", "last_error": "worker timeout", "updated_at": time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)}).Error; err != nil {
+	failed, err := s.store.QueueAutomaticImportJob(owner, target.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.store.ClaimScrapeJob(owner, connection.ID, failed.ID, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.store.FinishScrapeJob(owner, connection.ID, failed.ID, "failed", "", store.ImportRun{Status: "failed", Error: "worker timeout"}); err != nil {
 		t.Fatal(err)
 	}
 	list := request("GET", base, "")
@@ -142,6 +157,20 @@ func TestAutomaticImportTenantAPI(t *testing.T) {
 		check(request("POST", fmt.Sprintf("%s/targets/%d/%s", base, foreign.ID, action), `{}`), 404)
 	}
 	queue := fmt.Sprintf("%s/targets/%d/queue", base, target.ID)
+	for _, change := range []struct{ field, value, original string }{
+		{"status", "disabled", "active"},
+		{"kind", "api", "worker"},
+		{"provider", "wb", "ozon"},
+	} {
+		if err := s.store.DB().Model(&connection).UpdateColumn(change.field, change.value).Error; err != nil {
+			t.Fatal(err)
+		}
+		check(request("POST", queue, `{}`), 503)
+		check(request("POST", base+"/targets", body), 503)
+		if err := s.store.DB().Model(&connection).UpdateColumn(change.field, change.original).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
 	policy(false, 1)
 	check(request("POST", queue, `{}`), 403)
 	policy(true, 0)
@@ -207,11 +236,20 @@ func TestAutomaticImportTenantAPI(t *testing.T) {
 	if err := s.store.DB().Model(&store.Session{}).Where("token = ?", "owner-session").Update("tenant_id", 0).Error; err != nil {
 		t.Fatal(err)
 	}
-	r := httptest.NewRequest("GET", base, nil)
-	r.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "owner-session"})
-	w := httptest.NewRecorder()
-	s.adminMux().ServeHTTP(w, r)
-	check(w, 403)
+	for _, action := range []struct{ method, path, body string }{
+		{"GET", base, ""},
+		{"POST", base + "/targets", body},
+		{"POST", queue, `{}`},
+		{"POST", fmt.Sprintf("%s/targets/%d/disable", base, target.ID), `{}`},
+	} {
+		r := httptest.NewRequest(action.method, action.path, strings.NewReader(action.body))
+		r.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "owner-session"})
+		r.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "csrf"})
+		r.Header.Set(csrfHeaderName, "csrf")
+		w := httptest.NewRecorder()
+		s.adminMux().ServeHTTP(w, r)
+		check(w, 403)
+	}
 }
 
 // Exercise the client catalog through to the existing worker contract in one
@@ -308,9 +346,17 @@ func TestAutomaticImportTenantLifecycle(t *testing.T) {
 		t.Fatalf("disabled product did not free capacity: %+v", state)
 	}
 	var queued struct {
-		ID uint `json:"id"`
+		ID     uint   `json:"id"`
+		Status string `json:"status"`
 	}
 	request("a", "POST", queue, `{}`, 201, &queued)
+	if queued.Status != "queued" {
+		t.Fatalf("queue response status = %q", queued.Status)
+	}
+	request("a", "GET", base, "", 200, &state)
+	if state.Targets[0].LastStatus != "queued" || state.Targets[0].LastSyncAt != nil {
+		t.Fatalf("queued target state: %+v", state.Targets[0])
+	}
 
 	t.Run("tenant worker contract", func(t *testing.T) {
 		var poll struct {
@@ -328,6 +374,10 @@ func TestAutomaticImportTenantLifecycle(t *testing.T) {
 		request("b", "POST", path+"/claim", `{}`, 409, nil)
 		var claim workerJob
 		request("a", "POST", path+"/claim", `{}`, 200, &claim)
+		request("a", "GET", base, "", 200, &state)
+		if state.Targets[0].LastStatus != "running" || state.Targets[0].LastSyncAt != nil {
+			t.Fatalf("running target state: %+v", state.Targets[0])
+		}
 		body := fmt.Sprintf(`{"contract_version":1,"attempt":%d,"tenant_id":%d,"result":{"cursor":"done","source":{"provider":"spoof","marketplace":"wb","method":"api"},"records":[{"marketplace_review_id":"claimed-real-id","external_product_id":"spoof","seller_article":"spoof","text":"Imported review","created_at":"2026-09-29T10:00:00Z"}]}}`, claim.Attempt, tenantIDs["b"])
 		request("b", "POST", path+"/result", body, 404, nil)
 		request("a", "POST", path+"/result", body, 200, nil)
@@ -359,6 +409,17 @@ func TestAutomaticImportTenantLifecycle(t *testing.T) {
 		request("a", "GET", base, "", 200, &state)
 		if state.Targets[0].ID != first.ID || state.Targets[0].LastStatus != "succeeded" || state.Targets[0].LastSyncAt == nil {
 			t.Fatalf("worker result not reflected in client status: %+v", state)
+		}
+		completedAt := *state.Targets[0].LastSyncAt
+		request("a", "POST", queue, `{}`, 201, nil)
+		request("a", "GET", base, "", 200, &state)
+		if state.Targets[0].LastStatus != "queued" || state.Targets[0].LastSyncAt == nil || !state.Targets[0].LastSyncAt.Equal(completedAt) {
+			t.Fatalf("queue changed completion time: %+v", state.Targets[0])
+		}
+		request("a", "POST", fmt.Sprintf("%s/targets/%d/disable", base, first.ID), `{}`, 200, nil)
+		request("a", "GET", base, "", 200, &state)
+		if state.Targets[0].Enabled || state.Targets[0].LastSyncAt == nil || !state.Targets[0].LastSyncAt.Equal(completedAt) {
+			t.Fatalf("disable changed completion time: %+v", state.Targets[0])
 		}
 	})
 }

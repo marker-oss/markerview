@@ -143,11 +143,7 @@ type automaticImportTarget struct {
 }
 
 func automaticImportTargetJSON(t store.ScrapeTarget) automaticImportTarget {
-	var syncedAt *time.Time
-	if t.LastStatus != "" && !t.UpdatedAt.IsZero() {
-		syncedAt = &t.UpdatedAt
-	}
-	return automaticImportTarget{t.ID, t.URL, t.ExternalProductID, t.SellerArticle, t.Label, t.Enabled, t.LastStatus, t.LastError, syncedAt}
+	return automaticImportTarget{t.ID, t.URL, t.ExternalProductID, t.SellerArticle, t.Label, t.Enabled, t.LastStatus, t.LastError, t.LastSyncAt}
 }
 
 func (s *Server) automaticImportTargets(r *http.Request) *gorm.DB {
@@ -215,6 +211,9 @@ func (s *Server) automaticImportCapacity(w http.ResponseWriter, r *http.Request,
 }
 
 func (s *Server) handleAutomaticImportCreate(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.automaticImportPolicy(w, r); !ok {
+		return
+	}
 	var input struct {
 		URL           string `json:"url"`
 		Label         string `json:"label"`
@@ -231,15 +230,6 @@ func (s *Server) handleAutomaticImportCreate(w http.ResponseWriter, r *http.Requ
 		writeError(w, 400, errors.New("invalid Ozon product URL"))
 		return
 	}
-	policy, err := s.store.GetAutomaticImportPolicy(r.Context(), store.TenantIDFromCtx(r.Context()))
-	if err != nil {
-		writeError(w, 500, err)
-		return
-	}
-	if !policy.Enabled {
-		writeError(w, 403, store.ErrAutomaticImportDisabled)
-		return
-	}
 	var existing []store.ScrapeTarget
 	if err := s.automaticImportTargets(r).Where("scrape_targets.marketplace = ? AND scrape_targets.external_product_id = ?", "ozon", productID).Limit(2).Find(&existing).Error; err != nil {
 		writeError(w, 500, err)
@@ -247,10 +237,6 @@ func (s *Server) handleAutomaticImportCreate(w http.ResponseWriter, r *http.Requ
 	}
 	if len(existing) > 1 {
 		writeError(w, 409, errors.New("ambiguous existing targets require operator resolution"))
-		return
-	}
-	if len(existing) == 1 {
-		writeJSON(w, 200, automaticImportTargetJSON(existing[0]))
 		return
 	}
 	var connections []store.SourceConnection
@@ -274,11 +260,15 @@ func (s *Server) handleAutomaticImportCreate(w http.ResponseWriter, r *http.Requ
 			writeError(w, 403, err)
 			return
 		}
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, store.ErrAutomaticImportConnection) || errors.Is(err, gorm.ErrRecordNotFound) {
 			writeError(w, 503, errors.New("tenant scraper connection unavailable"))
 			return
 		}
 		writeError(w, 500, err)
+		return
+	}
+	if len(existing) == 1 {
+		writeJSON(w, 200, automaticImportTargetJSON(target))
 		return
 	}
 	writeJSON(w, 201, automaticImportTargetJSON(target))
@@ -308,33 +298,15 @@ func (s *Server) automaticImportOwnedTarget(w http.ResponseWriter, r *http.Reque
 }
 
 func (s *Server) handleAutomaticImportQueue(w http.ResponseWriter, r *http.Request) {
-	policy, err := s.store.GetAutomaticImportPolicy(r.Context(), store.TenantIDFromCtx(r.Context()))
-	if err != nil {
-		writeError(w, 500, err)
+	if _, ok := s.automaticImportPolicy(w, r); !ok {
 		return
 	}
-	if !policy.Enabled {
-		writeError(w, 403, store.ErrAutomaticImportDisabled)
-		return
-	}
-	target, ok := s.automaticImportOwnedTarget(w, r)
-	if !ok {
-		return
-	}
-	if !target.Enabled {
+	id, err := strconv.ParseUint(r.PathValue("id"), 10, 64)
+	if err != nil || id == 0 {
 		writeError(w, 404, errors.New("target not found"))
 		return
 	}
-	var connection store.SourceConnection
-	if err := s.store.DB().WithContext(r.Context()).Where("id = ? AND tenant_id = ? AND kind = ? AND method = ? AND status = ?", target.SourceConnectionID, store.TenantIDFromCtx(r.Context()), "worker", marketplace.SourceMethodScraper, "active").First(&connection).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			writeError(w, 503, errors.New("tenant scraper connection unavailable"))
-		} else {
-			writeError(w, 500, err)
-		}
-		return
-	}
-	job, err := s.store.QueueAutomaticImportJob(r.Context(), target.ID)
+	job, err := s.store.QueueAutomaticImportJob(r.Context(), uint(id))
 	if err != nil {
 		if errors.Is(err, store.ErrAutomaticImportActiveJob) || errors.Is(err, store.ErrAutomaticImportLimit) {
 			writeError(w, 409, err)
@@ -342,6 +314,10 @@ func (s *Server) handleAutomaticImportQueue(w http.ResponseWriter, r *http.Reque
 		}
 		if errors.Is(err, store.ErrAutomaticImportDisabled) {
 			writeError(w, 403, err)
+			return
+		}
+		if errors.Is(err, store.ErrAutomaticImportConnection) {
+			writeError(w, 503, errors.New("tenant scraper connection unavailable"))
 			return
 		}
 		if errors.Is(err, gorm.ErrRecordNotFound) {

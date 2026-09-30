@@ -100,6 +100,9 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err := s.migrateReviewIdentity(ctx); err != nil {
 		return fmt.Errorf("review identity migration: %w", err)
 	}
+	if err := s.migrateScrapeTargetLastSync(ctx); err != nil {
+		return fmt.Errorf("scrape target last sync migration: %w", err)
+	}
 	// Scrub is a startup data migration across every tenant's rows: the
 	// tenant may not exist yet on a fresh strict-mode instance, so iterate
 	// all tenants explicitly (ScrubPersonalData is tenant-scoped).
@@ -113,6 +116,24 @@ func (s *Store) Migrate(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func (s *Store) migrateScrapeTargetLastSync(ctx context.Context) error {
+	// UpdatedAt includes edits and disable operations. Only an owned completed
+	// job proves a sync attempt finished; targets without one stay unknown.
+	return s.db.WithContext(ctx).Exec(`UPDATE scrape_targets SET last_sync_at = (
+		SELECT MAX(finished_at) FROM scrape_jobs
+		WHERE scrape_jobs.target_id = scrape_targets.id
+		AND scrape_jobs.tenant_id = scrape_targets.tenant_id
+		AND scrape_jobs.source_connection_id = scrape_targets.source_connection_id
+		AND scrape_jobs.status IN ('succeeded', 'failed')
+	) WHERE last_sync_at IS NULL AND EXISTS (
+		SELECT 1 FROM scrape_jobs
+		WHERE scrape_jobs.target_id = scrape_targets.id
+		AND scrape_jobs.tenant_id = scrape_targets.tenant_id
+		AND scrape_jobs.source_connection_id = scrape_targets.source_connection_id
+		AND scrape_jobs.status IN ('succeeded', 'failed') AND finished_at IS NOT NULL
+	)`).Error
 }
 
 // migrateTenantBackfill stamps tenant 1 onto pre-multitenancy rows that were

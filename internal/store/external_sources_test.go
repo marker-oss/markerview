@@ -86,6 +86,9 @@ func TestClaimScrapeJobIsConnectionScopedAndReclaimsExpiredLease(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if job.Status != "queued" {
+		t.Fatalf("legacy queue response: %+v", job)
+	}
 	if _, err = s.ClaimScrapeJob(ctx, b.ID, job.ID, time.Minute); err == nil {
 		t.Fatal("other connection claimed job")
 	}
@@ -137,6 +140,128 @@ func TestFinishScrapeJobRequiresLiveLeaseAndKeepsCursorUntilSuccess(t *testing.T
 	}
 	if target.LastCursor != "new" {
 		t.Fatalf("cursor: %q", target.LastCursor)
+	}
+	if err := s.db.First(&job, job.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if target.LastSyncAt == nil || job.FinishedAt == nil || !target.LastSyncAt.Equal(*job.FinishedAt) {
+		t.Fatalf("success timestamp target=%+v, job=%+v", target, job)
+	}
+	completedAt := *target.LastSyncAt
+	job, err = s.QueueScrapeJob(ctx, target.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ClaimScrapeJob(ctx, c.ID, job.ID, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.db.First(&target, target.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if target.LastStatus != "running" || target.LastSyncAt == nil || !target.LastSyncAt.Equal(completedAt) {
+		t.Fatalf("claim changed completion time: %+v", target)
+	}
+	if err := s.FinishScrapeJob(ctx, c.ID, job.ID, "failed", "discard", ImportRun{Status: "failed", Error: "timeout"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.db.First(&target, target.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := s.db.First(&job, job.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if target.LastCursor != "new" || target.LastStatus != "failed" || target.LastError != "timeout" || target.LastSyncAt == nil || job.FinishedAt == nil || !target.LastSyncAt.Equal(*job.FinishedAt) {
+		t.Fatalf("failure timestamp/cursor target=%+v, job=%+v", target, job)
+	}
+}
+
+func TestMigrateScrapeTargetLastSyncUsesOwnedCompletions(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	old := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
+	latest := old.Add(time.Hour)
+	for _, target := range []ScrapeTarget{
+		{ID: 1, TenantID: 1, SourceConnectionID: 1, URL: "https://example.org/1", Marketplace: "ozon", LastStatus: "failed", UpdatedAt: latest.Add(time.Hour)},
+		{ID: 2, TenantID: 1, SourceConnectionID: 1, URL: "https://example.org/2", Marketplace: "ozon", LastStatus: "queued", UpdatedAt: latest},
+	} {
+		if err := s.db.Create(&target).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, job := range []ScrapeJob{
+		{TargetID: 1, TenantID: 1, SourceConnectionID: 1, Status: "succeeded", FinishedAt: &old},
+		{TargetID: 1, TenantID: 1, SourceConnectionID: 1, Status: "failed", FinishedAt: &latest},
+		{TargetID: 1, TenantID: 2, SourceConnectionID: 1, Status: "succeeded", FinishedAt: &latest},
+		{TargetID: 2, TenantID: 2, SourceConnectionID: 1, Status: "succeeded", FinishedAt: &latest},
+		{TargetID: 2, TenantID: 1, SourceConnectionID: 2, Status: "succeeded", FinishedAt: &latest},
+		{TargetID: 2, TenantID: 1, SourceConnectionID: 1, Status: "queued"},
+	} {
+		if err := s.db.Create(&job).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Recreate the pre-upgrade schema without the new nullable column.
+	if err := s.db.Migrator().DropColumn(&ScrapeTarget{}, "LastSyncAt"); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		if err := s.Migrate(ctx); err != nil {
+			t.Fatal(err)
+		}
+		var targets []ScrapeTarget
+		if err := s.db.Order("id").Find(&targets).Error; err != nil {
+			t.Fatal(err)
+		}
+		if len(targets) != 2 || targets[0].LastSyncAt == nil || !targets[0].LastSyncAt.Equal(latest) || targets[1].LastSyncAt != nil {
+			t.Fatalf("migration lost completion provenance: %+v", targets)
+		}
+	}
+}
+
+func TestScrapeJobStateTransitionsRollbackWithTarget(t *testing.T) {
+	s := newTestStore(t)
+	ctx := WithTenant(context.Background(), DefaultTenantID)
+	if err := s.SetAutomaticImportPolicy(ctx, DefaultTenantID, true, 1); err != nil {
+		t.Fatal(err)
+	}
+	conn := SourceConnection{Kind: "worker", Provider: "ozon", Method: "scraper", Name: "atomic", Status: "active", TokenHash: HashSourceToken("atomic")}
+	if err := s.CreateSourceConnection(ctx, &conn); err != nil {
+		t.Fatal(err)
+	}
+	target := ScrapeTarget{SourceConnectionID: conn.ID, URL: "https://www.ozon.ru/product/item-42/", Marketplace: "ozon", ExternalProductID: "42", Enabled: true}
+	if err := s.CreateAutomaticImportTarget(ctx, &target, 0); err != nil {
+		t.Fatal(err)
+	}
+	blockUpdates := func() {
+		t.Helper()
+		if err := s.db.Exec("CREATE TRIGGER block_target_status BEFORE UPDATE OF last_status ON scrape_targets BEGIN SELECT RAISE(ABORT, 'target unavailable'); END").Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	blockUpdates()
+	if _, err := s.QueueAutomaticImportJob(ctx, target.ID); err == nil {
+		t.Fatal("queue succeeded despite target update failure")
+	}
+	assertCount(t, s, &ScrapeJob{}, 0)
+	if err := s.db.Exec("DROP TRIGGER block_target_status").Error; err != nil {
+		t.Fatal(err)
+	}
+	job, err := s.QueueAutomaticImportJob(ctx, target.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.Status != "queued" {
+		t.Fatalf("queue result: %+v", job)
+	}
+	blockUpdates()
+	if _, err := s.ClaimScrapeJob(ctx, conn.ID, job.ID, time.Minute); err == nil {
+		t.Fatal("claim succeeded despite target update failure")
+	}
+	if err := s.db.First(&job, job.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if job.Status != "queued" || job.Attempts != 0 || job.LeaseUntil != nil {
+		t.Fatalf("claim was not rolled back: %+v", job)
 	}
 }
 
