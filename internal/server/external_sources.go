@@ -225,8 +225,6 @@ func (s *Server) handleAutomaticImportCreate(w http.ResponseWriter, r *http.Requ
 		writeError(w, 400, errors.New("invalid Ozon product URL"))
 		return
 	}
-	s.automaticImportMu.Lock()
-	defer s.automaticImportMu.Unlock()
 	policy, ok := s.automaticImportPolicy(w, r)
 	if !ok {
 		return
@@ -244,9 +242,6 @@ func (s *Server) handleAutomaticImportCreate(w http.ResponseWriter, r *http.Requ
 		writeJSON(w, 200, automaticImportTargetJSON(existing[0]))
 		return
 	}
-	if !s.automaticImportCapacity(w, r, policy.Limit, true) {
-		return
-	}
 	var connections []store.SourceConnection
 	if err := s.store.DB().WithContext(r.Context()).Where("tenant_id = ? AND kind = ? AND provider = ? AND method = ? AND status = ?", store.TenantIDFromCtx(r.Context()), "worker", "ozon", marketplace.SourceMethodScraper, "active").Limit(2).Find(&connections).Error; err != nil {
 		writeError(w, 500, err)
@@ -259,7 +254,15 @@ func (s *Server) handleAutomaticImportCreate(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	target := store.ScrapeTarget{SourceConnectionID: connections[0].ID, URL: canonical, Marketplace: "ozon", ExternalProductID: productID, Label: input.Label, SellerArticle: input.SellerArticle, Enabled: true}
-	if err := s.store.CreateScrapeTarget(r.Context(), &target); err != nil {
+	if err := s.store.CreateAutomaticImportTarget(r.Context(), &target, policy.Limit); err != nil {
+		if errors.Is(err, store.ErrAutomaticImportLimit) {
+			writeError(w, 409, err)
+			return
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			writeError(w, 503, errors.New("tenant scraper connection unavailable"))
+			return
+		}
 		writeError(w, 500, err)
 		return
 	}
@@ -290,8 +293,6 @@ func (s *Server) automaticImportOwnedTarget(w http.ResponseWriter, r *http.Reque
 }
 
 func (s *Server) handleAutomaticImportQueue(w http.ResponseWriter, r *http.Request) {
-	s.automaticImportMu.Lock()
-	defer s.automaticImportMu.Unlock()
 	target, ok := s.automaticImportOwnedTarget(w, r)
 	if !ok {
 		return
@@ -313,18 +314,16 @@ func (s *Server) handleAutomaticImportQueue(w http.ResponseWriter, r *http.Reque
 		}
 		return
 	}
-	var active int64
-	// Expired leases are still active: workers reclaim the same job/attempt.
-	if err := s.store.DB().WithContext(r.Context()).Model(&store.ScrapeJob{}).Where("tenant_id = ? AND target_id = ? AND status IN ?", store.TenantIDFromCtx(r.Context()), target.ID, []string{"queued", "leased"}).Count(&active).Error; err != nil {
-		writeError(w, 500, err)
-		return
-	}
-	if active != 0 {
-		writeError(w, 409, errors.New("target already has an active job"))
-		return
-	}
-	job, err := s.store.QueueScrapeJob(r.Context(), target.ID)
+	job, err := s.store.QueueAutomaticImportJob(r.Context(), target.ID)
 	if err != nil {
+		if errors.Is(err, store.ErrAutomaticImportActiveJob) {
+			writeError(w, 409, err)
+			return
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			writeError(w, 404, errors.New("target not found"))
+			return
+		}
 		writeError(w, 500, err)
 		return
 	}
@@ -332,8 +331,6 @@ func (s *Server) handleAutomaticImportQueue(w http.ResponseWriter, r *http.Reque
 }
 
 func (s *Server) handleAutomaticImportDisable(w http.ResponseWriter, r *http.Request) {
-	s.automaticImportMu.Lock()
-	defer s.automaticImportMu.Unlock()
 	target, ok := s.automaticImportOwnedTarget(w, r)
 	if !ok {
 		return

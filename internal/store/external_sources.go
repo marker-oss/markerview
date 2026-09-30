@@ -9,6 +9,11 @@ import (
 	"time"
 )
 
+var (
+	ErrAutomaticImportLimit     = errors.New("automatic import limit exhausted")
+	ErrAutomaticImportActiveJob = errors.New("target already has an active job")
+)
+
 type SourceConnection struct {
 	ID         uint   `gorm:"primaryKey"`
 	TenantID   uint   `gorm:"not null;index"`
@@ -84,19 +89,19 @@ func (s *Store) CreateSourceConnection(ctx context.Context, c *SourceConnection)
 	c.TenantID = TenantIDFromCtx(ctx)
 	return s.db.WithContext(ctx).Create(c).Error
 }
-func (s *Store) CreateScrapeTarget(ctx context.Context, t *ScrapeTarget) error {
+func (s *Store) createScrapeTargetDB(db *gorm.DB, ctx context.Context, t *ScrapeTarget) error {
 	tenant := TenantIDFromCtx(ctx)
 	var c SourceConnection
-	if err := s.db.WithContext(ctx).Where("id = ? AND tenant_id = ?", t.SourceConnectionID, tenant).First(&c).Error; err != nil {
+	if err := db.WithContext(ctx).Where("id = ? AND tenant_id = ?", t.SourceConnectionID, tenant).First(&c).Error; err != nil {
 		return err
 	}
 	t.TenantID = tenant
 	if t.Marketplace != "ozon" || t.ExternalProductID == "" {
-		return s.db.WithContext(ctx).Create(t).Error
+		return db.WithContext(ctx).Create(t).Error
 	}
 	findExisting := func() ([]ScrapeTarget, error) {
 		var existing []ScrapeTarget
-		err := s.db.WithContext(ctx).Where("tenant_id = ? AND source_connection_id = ? AND marketplace = ? AND external_product_id = ?", tenant, t.SourceConnectionID, t.Marketplace, t.ExternalProductID).Order("id").Limit(2).Find(&existing).Error
+		err := db.WithContext(ctx).Where("tenant_id = ? AND source_connection_id = ? AND marketplace = ? AND external_product_id = ?", tenant, t.SourceConnectionID, t.Marketplace, t.ExternalProductID).Order("id").Limit(2).Find(&existing).Error
 		return existing, err
 	}
 	if existing, err := findExisting(); err != nil {
@@ -108,7 +113,7 @@ func (s *Store) CreateScrapeTarget(ctx context.Context, t *ScrapeTarget) error {
 		return nil
 	}
 	t.Canonical = true
-	if err := s.db.WithContext(ctx).Create(t).Error; err == nil {
+	if err := db.WithContext(ctx).Create(t).Error; err == nil {
 		return nil
 	} else if existing, lookupErr := findExisting(); lookupErr == nil && len(existing) == 1 {
 		*t = existing[0]
@@ -117,6 +122,70 @@ func (s *Store) CreateScrapeTarget(ctx context.Context, t *ScrapeTarget) error {
 		return err
 	}
 }
+
+func (s *Store) CreateScrapeTarget(ctx context.Context, t *ScrapeTarget) error {
+	return s.createScrapeTargetDB(s.db, ctx, t)
+}
+
+// CreateAutomaticImportTarget locks the tenant row before checking quota and
+// creating a target, so concurrent server instances cannot both consume the
+// final slot. The caller has already canonicalized and selected a tenant-owned
+// scraper connection; this method verifies both again in the transaction.
+func (s *Store) CreateAutomaticImportTarget(ctx context.Context, t *ScrapeTarget, limit int) error {
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		tenant := TenantIDFromCtx(ctx)
+		if err := tx.Model(&Tenant{}).Where("id = ?", tenant).UpdateColumn("automatic_import_limit", gorm.Expr("automatic_import_limit")).Error; err != nil {
+			return err
+		}
+		var count int64
+		if err := tx.Model(&ScrapeTarget{}).Joins("JOIN source_connections ON source_connections.id = scrape_targets.source_connection_id AND source_connections.tenant_id = scrape_targets.tenant_id").Where("scrape_targets.tenant_id = ? AND scrape_targets.enabled = ? AND source_connections.method = ?", tenant, true, "scraper").Count(&count).Error; err != nil {
+			return err
+		}
+		var existing []ScrapeTarget
+		if err := tx.Model(&ScrapeTarget{}).Joins("JOIN source_connections ON source_connections.id = scrape_targets.source_connection_id AND source_connections.tenant_id = scrape_targets.tenant_id").Where("scrape_targets.tenant_id = ? AND scrape_targets.marketplace = ? AND scrape_targets.external_product_id = ? AND source_connections.method = ?", tenant, t.Marketplace, t.ExternalProductID, "scraper").Order("scrape_targets.id").Limit(2).Find(&existing).Error; err != nil {
+			return err
+		}
+		if len(existing) > 1 {
+			return errors.New("ambiguous legacy scrape targets require manual resolution")
+		}
+		if len(existing) == 1 {
+			*t = existing[0]
+			return nil
+		}
+		if limit <= 0 || count >= int64(limit) {
+			return ErrAutomaticImportLimit
+		}
+		return s.createScrapeTargetDB(tx, ctx, t)
+	})
+}
+
+// QueueAutomaticImportJob serializes the active-job check and insert on the
+// tenant row. UPDATE obtains a row write lock on PostgreSQL and serializes
+// writers on SQLite, avoiding process-local coordination.
+func (s *Store) QueueAutomaticImportJob(ctx context.Context, targetID uint) (ScrapeJob, error) {
+	var job ScrapeJob
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		tenant := TenantIDFromCtx(ctx)
+		if err := tx.Model(&Tenant{}).Where("id = ?", tenant).UpdateColumn("automatic_import_limit", gorm.Expr("automatic_import_limit")).Error; err != nil {
+			return err
+		}
+		var target ScrapeTarget
+		if err := tx.Where("id = ? AND tenant_id = ? AND enabled = ?", targetID, tenant, true).First(&target).Error; err != nil {
+			return err
+		}
+		var active int64
+		if err := tx.Model(&ScrapeJob{}).Where("tenant_id = ? AND target_id = ? AND status IN ?", tenant, target.ID, []string{"queued", "leased"}).Count(&active).Error; err != nil {
+			return err
+		}
+		if active != 0 {
+			return ErrAutomaticImportActiveJob
+		}
+		job = ScrapeJob{TenantID: tenant, SourceConnectionID: target.SourceConnectionID, TargetID: target.ID, CursorBefore: target.LastCursor}
+		return tx.Create(&job).Error
+	})
+	return job, err
+}
+
 func (s *Store) QueueScrapeJob(ctx context.Context, targetID uint) (ScrapeJob, error) {
 	tenant := TenantIDFromCtx(ctx)
 	var t ScrapeTarget

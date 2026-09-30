@@ -127,9 +127,6 @@ type Server struct {
 
 	importMu       sync.Mutex
 	importPreviews map[string]importPreview
-	// ponytail: serialize client quota/job checks in this server; use database
-	// transactions before serving automatic import from multiple replicas.
-	automaticImportMu sync.Mutex
 	// tenantExportScope resolves the per-tenant static export subdirectory
 	// (the tenant's public key) on SaaS. nil keeps the legacy shared
 	// reviews-data path for single-tenant deployments.

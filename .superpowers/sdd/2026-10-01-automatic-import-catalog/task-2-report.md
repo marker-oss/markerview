@@ -5,8 +5,9 @@ Implemented Task 2 only. No production data or worker credentials were created; 
 
 ## Files
 - `internal/server/external_sources.go`: client-facing handlers, tenant-owned scraper connection resolution, policy/quota enforcement, canonical Ozon target creation, idempotent product lookup, active-job exclusion, disable action, and explicit response projection without credentials/worker configuration/cursors.
-- `internal/server/server.go`: four session-protected routes, existing CSRF protection on all mutations, and a mutex serializing client quota/job check-and-write operations.
+- `internal/server/server.go`: four session-protected routes and existing CSRF protection on all mutations.
 - `internal/server/automatic_import_test.go`: real database/request regression covering the client API and its authorization boundaries.
+- `internal/store/external_sources.go`: transactional target creation and queue helpers lock/update the tenant row before quota or active-job checks, making the critical check-and-write path database-serialized across Server instances.
 
 ## API contract
 - `GET /admin/api/automatic-import`: `{enabled, limit, active_count, targets}`. Each target has `id`, `url`, `external_product_id`, `seller_article`, `label`, `enabled`, and `last_status`.
@@ -37,5 +38,5 @@ The regression covers canonicalization, duplicate idempotency at full quota, fea
 
 ## Concerns / deployment limits
 - Automatic provisioning is intentionally unavailable; an operator must securely provision one tenant-owned Ozon scraper connection outside the ordinary-client API. Zero or multiple matching connections produce 503 for new targets.
-- Quota and duplicate-job check/write serialization is scoped to one Server instance. Multiple replicas or independent writers need database-transaction/locking enforcement before relying on these invariants across processes; this limit is explicitly documented in code.
+- Quota and duplicate-job checks now run inside GORM transactions after a tenant-row self-update. PostgreSQL obtains a row lock and SQLite serializes writers, so separate Server instances sharing one database cannot both consume the final slot or queue a second active job. The focused regression invokes concurrent queue requests.
 - Disabling a target prevents new client queue requests but does not cancel previously queued/leased jobs; worker-route behavior is intentionally preserved.
