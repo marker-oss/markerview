@@ -118,6 +118,26 @@ curl --fail --silent --show-error http://127.0.0.1:8080/healthz
 - Media proxy ограничивает allowlisted CDN host suffixes и размер ответа (default 8 MiB); не расширяйте allowlist до произвольного Internet без threat review. Uploads и user media — персональные данные, их backup access должен быть ограничен.
 - `REVIEWS_CREDENTIALS_KEY` защищает stored marketplace credentials at rest только при задании key; self-host default может хранить их plaintext. Для hosted/strict mode key обязательна operational policy.
 
+
+## Автоматический импорт: оператор и tenant admin
+
+Оператор включает функцию отдельно для tenant через закрытый
+`PUT /admin/api/saas/tenants/{id}/automatic-import` с JSON
+`{"enabled":true,"limit":N}`. Лимит считает только включённые scraper-targets:
+отключённый товар освобождает место, а `limit: 0` не разрешает добавление или
+постановку job в очередь. Оператор не передаёт tenant admin worker token.
+
+После включения tenant admin открывает **Настройки → Автоматический импорт** и
+проходит поток: **добавить товары → поставить в очередь → обновить статус**.
+Сервер выбирает активное scraper-соединение этого tenant, создаёт target/job с
+его tenant и server-owned product mapping, а страница показывает `queued`,
+`running`, `succeeded`, `failed`, последнюю ошибку и время синхронизации.
+Tenant B не видит targets tenant A и не может поставить их jobs в очередь;
+изоляция определяется session/connection context, не полями client/worker JSON.
+
+Локальная проверка использует изолированную тестовую БД/server и не создаёт
+production targets/jobs. Production provisioning и rollout выполняются отдельным
+контролируемым шагом.
 ## Действия при инциденте
 
 1. Остановить sync/rollout, сохранить timestamp и логи до ротации.

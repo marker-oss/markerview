@@ -15,6 +15,18 @@ clojure -M:run
 
 Create a worker `SourceConnection` through the authenticated admin API (`POST /admin/api/external-sources`, name/provider/marketplace and optional `method`: `scraper` or `external_service`). Keep the token from its creation response; it is the worker's credential, not a marketplace API key. Create its target with `POST /admin/api/external-sources/{id}/targets` (URL, marketplace, product mapping), then queue with `POST /admin/api/external-sources/{id}/targets/{target}/queue`. Admin mutations require the existing session and CSRF header. Jobs are assigned to the connection's tenant and poll/claim/result must use the same token. No periodic target scheduler is implied by these routes: queue a job explicitly.
 
+For the tenant-facing automatic-import flow, an operator first enables the feature
+and sets the tenant's active-target limit. The limit counts enabled scraper targets
+only; disabling a target frees a slot, and limit `0` rejects additions and queues.
+The tenant admin then uses **Settings → Automatic import**: add Ozon product share
+URLs, choose **Start import** for a target, and refresh the page for `queued`,
+`running`, `succeeded`, or `failed` status and the latest error/sync time. The
+tenant admin never receives a worker token. The server selects exactly one active
+scraper connection belonging to that tenant, creates the target/job in that tenant,
+and ignores tenant or product mapping claims in client/worker JSON. Tenant A's
+targets and jobs are never visible or queueable from tenant B. Production targets
+and jobs are not part of local verification; production rollout is a separate step.
+
 For Ozon, the server canonicalizes a product share URL on target creation to HTTPS `www.ozon.ru/product/<slug>-<id>/`, removes its query/fragment and derives `external_product_id` from the path. The public JSON API connector does **not** scrape this card; use a separate compatible private scraper for an Ozon product URL. Provider API endpoints can instead use `config.connector: "json-api"`. Recreating the same Ozon target returns the existing target without resetting its cursor.
 
 Optional environment variables:
