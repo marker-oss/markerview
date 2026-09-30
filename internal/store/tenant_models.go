@@ -25,6 +25,9 @@ type Tenant struct {
 	Plan        string    `gorm:"size:16;not null;default:'trial'"` // trial|free|base|pro|pro+
 	Status      string    `gorm:"size:16;not null;default:'trial'"` // trial|active|grace|paused
 	TrialEndsAt time.Time `gorm:"not null"`
+	// Automatic import is opt-in for every existing and new tenant.
+	AutomaticImportEnabled bool `gorm:"not null;default:false"`
+	AutomaticImportLimit   int  `gorm:"not null;default:0"`
 	// PaidUntil extends with each successful payment (billing overlay):
 	// an active tenant past PaidUntil degrades to grace/paused. nil for
 	// trial/free tenants; the core never sets it.
