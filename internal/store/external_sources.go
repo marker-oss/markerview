@@ -135,15 +135,15 @@ func (s *Store) CreateScrapeTarget(ctx context.Context, t *ScrapeTarget) error {
 func (s *Store) CreateAutomaticImportTarget(ctx context.Context, t *ScrapeTarget, _ int) error {
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		tenant := TenantIDFromCtx(ctx)
+		if err := tx.Model(&Tenant{}).Where("id = ?", tenant).UpdateColumn("automatic_import_limit", gorm.Expr("automatic_import_limit")).Error; err != nil {
+			return err
+		}
 		var policy Tenant
 		if err := tx.Select("automatic_import_enabled", "automatic_import_limit").First(&policy, tenant).Error; err != nil {
 			return err
 		}
 		if !policy.AutomaticImportEnabled {
 			return ErrAutomaticImportDisabled
-		}
-		if err := tx.Model(&Tenant{}).Where("id = ?", tenant).UpdateColumn("automatic_import_limit", gorm.Expr("automatic_import_limit")).Error; err != nil {
-			return err
 		}
 		var count int64
 		if err := tx.Model(&ScrapeTarget{}).Joins("JOIN source_connections ON source_connections.id = scrape_targets.source_connection_id AND source_connections.tenant_id = scrape_targets.tenant_id").Where("scrape_targets.tenant_id = ? AND scrape_targets.enabled = ? AND source_connections.method = ?", tenant, true, "scraper").Count(&count).Error; err != nil {
@@ -174,15 +174,15 @@ func (s *Store) QueueAutomaticImportJob(ctx context.Context, targetID uint) (Scr
 	var job ScrapeJob
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		tenant := TenantIDFromCtx(ctx)
+		if err := tx.Model(&Tenant{}).Where("id = ?", tenant).UpdateColumn("automatic_import_limit", gorm.Expr("automatic_import_limit")).Error; err != nil {
+			return err
+		}
 		var policy Tenant
 		if err := tx.Select("automatic_import_enabled", "automatic_import_limit").First(&policy, tenant).Error; err != nil {
 			return err
 		}
 		if !policy.AutomaticImportEnabled {
 			return ErrAutomaticImportDisabled
-		}
-		if err := tx.Model(&Tenant{}).Where("id = ?", tenant).UpdateColumn("automatic_import_limit", gorm.Expr("automatic_import_limit")).Error; err != nil {
-			return err
 		}
 		var target ScrapeTarget
 		if err := tx.Where("id = ? AND tenant_id = ? AND enabled = ?", targetID, tenant, true).First(&target).Error; err != nil {
