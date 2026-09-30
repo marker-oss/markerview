@@ -467,6 +467,7 @@ export default function App() {
       {route === 'marketplaces' && <Marketplaces />}
       {route === 'automatic-import' && <AutomaticImport />}
       {route === 'status' && <Status />}
+      {route === 'billing' && BillingPage !== null && <BillingPage />}
       {route === 'operator' && OperatorPage !== null && hasOperator && <OperatorPage />}
     </>
   )
