@@ -91,6 +91,10 @@ func TestAutomaticImportTenantAPI(t *testing.T) {
 	if target.ID == 0 || target.URL != "https://www.ozon.ru/product/item-42/" || target.Article != "A42" {
 		t.Fatalf("target %+v", target)
 	}
+	initialList := request("GET", base, "")
+	if initialList.Code != 200 || strings.Contains(initialList.Body.String(), `"last_sync_at"`) {
+		t.Fatalf("unsynced target timestamp leaked: %s", initialList.Body.String())
+	}
 	var stored store.ScrapeTarget
 	if err := s.store.DB().First(&stored, target.ID).Error; err != nil {
 		t.Fatal(err)
@@ -121,16 +125,16 @@ func TestAutomaticImportTenantAPI(t *testing.T) {
 		Limit       int  `json:"limit"`
 		ActiveCount int  `json:"active_count"`
 		Targets     []struct {
-			ID         uint   `json:"id"`
-			LastStatus string `json:"last_status"`
-			LastError  string `json:"last_error"`
-			LastSyncAt string `json:"last_sync_at"`
+			ID         uint    `json:"id"`
+			LastStatus string  `json:"last_status"`
+			LastError  string  `json:"last_error"`
+			LastSyncAt *string `json:"last_sync_at"`
 		} `json:"targets"`
 	}
 	if err := json.Unmarshal(list.Body.Bytes(), &state); err != nil {
 		t.Fatal(err)
 	}
-	if !state.Enabled || state.Limit != 1 || state.ActiveCount != 1 || len(state.Targets) != 1 || state.Targets[0].ID != target.ID || state.Targets[0].LastStatus != "failed" || state.Targets[0].LastError != "worker timeout" || state.Targets[0].LastSyncAt == "" {
+	if !state.Enabled || state.Limit != 1 || state.ActiveCount != 1 || len(state.Targets) != 1 || state.Targets[0].ID != target.ID || state.Targets[0].LastStatus != "failed" || state.Targets[0].LastError != "worker timeout" || state.Targets[0].LastSyncAt == nil {
 		t.Fatalf("state %+v", state)
 	}
 	for _, action := range []string{"queue", "disable"} {

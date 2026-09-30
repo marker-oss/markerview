@@ -4,12 +4,13 @@
 Implemented Task 2 only. No production data or worker credentials were created; all exercised mutations used temporary SQLite test databases.
 
 ## Files
-- `internal/server/external_sources.go`: client-facing handlers, tenant-owned scraper connection resolution, policy/quota enforcement, canonical Ozon target creation, idempotent product lookup, active-job exclusion, disable action, and explicit response projection without credentials/worker configuration/cursors. GET target rows now expose stored `last_status`, `last_error`, and `last_sync_at` (`updated_at`) fields.
+- `internal/server/external_sources.go`: client-facing handlers, tenant-owned scraper connection resolution, policy/quota enforcement, canonical Ozon target creation, idempotent product lookup, active-job exclusion, disable action, and explicit response projection without credentials/worker configuration/cursors. GET target rows expose stored `last_status`, `last_error`, and nullable `last_sync_at`; never-synced targets omit the timestamp.
 - `internal/server/server.go`: four session-protected routes and existing CSRF protection on all mutations.
 - `internal/server/automatic_import_test.go`: real database/request regression covering the client API and its authorization boundaries.
 - `internal/store/external_sources.go`: transactional target creation and queue helpers lock/update the tenant row before quota or active-job checks, making the critical check-and-write path database-serialized across Server instances.
 - `internal/store/automatic_import_test.go`: direct-helper regression proving policy disable/limit reductions are re-read inside mutation transactions.
 - `internal/server/automatic_import_test.go`: GET regression seeds and asserts stored failure status, error, and sync timestamp fields.
+- `internal/server/automatic_import_test.go`: GET regression seeds and asserts stored failure status/error/timestamp, and verifies a newly created target does not emit a bogus year-1 sync date.
 
 ## API contract
 - `GET /admin/api/automatic-import`: `{enabled, limit, active_count, targets}`. Each target has `id`, `url`, `external_product_id`, `seller_article`, `label`, `enabled`, and `last_status`.
