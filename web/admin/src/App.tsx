@@ -6,6 +6,7 @@ import ToastHost from './components/ToastHost'
 import Dashboard from './pages/Dashboard'
 import Editor from './pages/Editor'
 import Marketplaces from './pages/Marketplaces'
+import AutomaticImport from './pages/AutomaticImport'
 import QuestionsPanel from './pages/Questions'
 import Reviews from './pages/Reviews'
 import Settings from './pages/Settings'
@@ -29,10 +30,10 @@ type Route =
   | 'widget'
   | 'settings'
   | 'marketplaces'
+  | 'automatic-import'
   | 'status'
   | 'billing'
   | 'operator'
-
 type NavItem = { route: Route; label: string; icon: string }
 type NavGroup = { label: string; items: NavItem[] }
 
@@ -50,17 +51,18 @@ const NAV: NavGroup[] = [
     items: [
       { route: 'settings', label: 'Общие', icon: 'gear' },
       { route: 'marketplaces', label: 'Маркетплейсы', icon: 'mp' },
+      { route: 'automatic-import', label: 'Автоматический импорт', icon: 'list' },
       { route: 'status', label: 'Состояние', icon: 'pulse' },
     ],
   },
 ]
-
 const CRUMBS: Record<Route, string> = {
   dashboard: 'Работа / Обзор',
   reviews: 'Работа / Отзывы',
   widget: 'Виджет / Конструктор',
   settings: 'Настройки / Общие',
   marketplaces: 'Настройки / Маркетплейсы',
+  'automatic-import': 'Настройки / Автоматический импорт',
   status: 'Настройки / Состояние',
   billing: 'Аккаунт / Подписка',
   operator: 'Аккаунт / SaaS',
@@ -86,6 +88,7 @@ const LEGACY_ROUTES: Record<string, Route> = {
   operator: 'operator',
   settings: 'settings',
   marketplaces: 'marketplaces',
+  'automatic-import': 'automatic-import',
   'settings/general': 'settings',
   'settings/marketplaces': 'marketplaces',
 }
@@ -95,6 +98,7 @@ function currentRoute(): Route {
   if (raw in LEGACY_ROUTES) return LEGACY_ROUTES[raw]
   return 'dashboard'
 }
+
 async function postAuth(path: string, body: unknown): Promise<unknown> {
   const res = await fetch(path, {
     method: 'POST',
@@ -461,8 +465,8 @@ export default function App() {
       {route === 'widget' && <Editor />}
       {route === 'settings' && <Settings />}
       {route === 'marketplaces' && <Marketplaces />}
+      {route === 'automatic-import' && <AutomaticImport />}
       {route === 'status' && <Status />}
-      {route === 'billing' && BillingPage !== null && <BillingPage />}
       {route === 'operator' && OperatorPage !== null && hasOperator && <OperatorPage />}
     </>
   )
