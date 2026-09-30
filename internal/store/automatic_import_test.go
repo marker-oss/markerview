@@ -65,6 +65,13 @@ func TestSetAutomaticImportPolicyRejectsNegativeLimit(t *testing.T) {
 	}
 }
 
+func TestSetAutomaticImportPolicyRejectsUnknownTenant(t *testing.T) {
+	s := newTestStore(t)
+	if err := s.SetAutomaticImportPolicy(context.Background(), 999999, true, 1); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("unknown tenant error = %v, want %v", err, ErrNotFound)
+	}
+}
+
 func TestCountEnabledScrapeTargetsIsTenantAndScraperScoped(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()

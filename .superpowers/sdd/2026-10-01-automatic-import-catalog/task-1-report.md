@@ -9,9 +9,13 @@
 Policy is stored directly on the tenant row, following the existing tenant/settings model and AutoMigrate convention. New and existing tenants read as disabled with limit 0 until explicitly enabled. Negative limits are rejected before any database operation. Target counts are filtered by tenant, enabled state, and a tenant-matched `SourceConnection` whose method is `scraper`; API-owned targets and disabled targets do not consume the count.
 
 ## Tests / commands / output
-- `go test ./internal/store -run 'AutomaticImport|Tenant' -count=1`
-- Output: `ok reviews/internal/store 0.144s`
+- Initial focused command: `go test ./internal/store -run 'AutomaticImport|Tenant' -count=1`
+- Initial output: `ok reviews/internal/store 0.144s`
+- Review regression command after unknown-tenant fix: `go test ./internal/store -run 'AutomaticImport|Tenant' -count=1`
+- Review regression output: `ok reviews/internal/store 0.176s`
+
+## Review fix
+`SetAutomaticImportPolicy` now returns `ErrNotFound` when the tenant update affects zero rows. Added `TestSetAutomaticImportPolicyRejectsUnknownTenant`.
 
 ## Concerns
-- `SetAutomaticImportPolicy` follows existing update-helper behavior and returns nil for a nonexistent tenant because GORM reports no error for zero affected rows; later API validation may choose to enforce existence explicitly.
 - `store.go` was not modified because its existing `AutoMigrate(&Tenant{})` automatically applies the new columns.

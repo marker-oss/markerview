@@ -32,7 +32,13 @@ func (s *Store) SetAutomaticImportPolicy(ctx context.Context, tenantID uint, ena
 		"automatic_import_enabled": enabled,
 		"automatic_import_limit":   limit,
 	})
-	return result.Error
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // CountEnabledScrapeTargets counts enabled targets owned by scraper connections
