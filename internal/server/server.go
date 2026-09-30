@@ -127,6 +127,9 @@ type Server struct {
 
 	importMu       sync.Mutex
 	importPreviews map[string]importPreview
+	// ponytail: serialize client quota/job checks in this server; use database
+	// transactions before serving automatic import from multiple replicas.
+	automaticImportMu sync.Mutex
 	// tenantExportScope resolves the per-tenant static export subdirectory
 	// (the tenant's public key) on SaaS. nil keeps the legacy shared
 	// reviews-data path for single-tenant deployments.
@@ -406,6 +409,10 @@ func (s *Server) adminMux() *http.ServeMux {
 	protected.HandleFunc("GET /admin/api/marketplaces", s.handleMarketplaces)
 	protected.Handle("POST /admin/api/imports/ozon/preview", requireCSRF(http.HandlerFunc(s.handleOzonImportPreview)))
 	protected.Handle("POST /admin/api/imports/ozon/commit", requireCSRF(http.HandlerFunc(s.handleOzonImportCommit)))
+	protected.HandleFunc("GET /admin/api/automatic-import", s.handleAutomaticImport)
+	protected.Handle("POST /admin/api/automatic-import/targets", requireCSRF(http.HandlerFunc(s.handleAutomaticImportCreate)))
+	protected.Handle("POST /admin/api/automatic-import/targets/{id}/queue", requireCSRF(http.HandlerFunc(s.handleAutomaticImportQueue)))
+	protected.Handle("POST /admin/api/automatic-import/targets/{id}/disable", requireCSRF(http.HandlerFunc(s.handleAutomaticImportDisable)))
 	protected.Handle("PUT /admin/api/marketplaces/{id}/credentials", requireCSRF(http.HandlerFunc(s.handleSaveMarketplaceCredentials)))
 	protected.HandleFunc("GET /admin/api/settings", s.handleGetSettings)
 	protected.Handle("PUT /admin/api/settings", requireCSRF(http.HandlerFunc(s.handlePutSettings)))

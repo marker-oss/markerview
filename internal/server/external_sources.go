@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -14,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 var ozonProductIDPattern = regexp.MustCompile(`^.+-([0-9]+)$`)
@@ -48,6 +51,10 @@ func newWorkerToken() (string, string, error) {
 	return token, store.HashSourceToken(token), nil
 }
 func (s *Server) handleAdminSourceCreate(w http.ResponseWriter, r *http.Request) {
+	if store.StrictTenantMode() {
+		writeError(w, 403, errors.New("worker provisioning is operator-managed"))
+		return
+	}
 	var req struct{ Name, Provider, Marketplace, Method string }
 	if json.NewDecoder(r.Body).Decode(&req) != nil || req.Name == "" || req.Provider == "" || req.Marketplace == "" {
 		writeError(w, 400, errors.New("name, provider, and marketplace are required"))
@@ -73,6 +80,10 @@ func (s *Server) handleAdminSourceCreate(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, 201, map[string]any{"id": c.ID, "token": token, "provider": req.Provider, "marketplace": req.Marketplace, "method": req.Method})
 }
 func (s *Server) handleAdminTargetCreate(w http.ResponseWriter, r *http.Request) {
+	if store.StrictTenantMode() {
+		writeError(w, 403, errors.New("use the automatic import API"))
+		return
+	}
 	id, _ := strconv.ParseUint(r.PathValue("id"), 10, 64)
 	var req struct {
 		URL               string `json:"url"`
@@ -105,6 +116,10 @@ func (s *Server) handleAdminTargetCreate(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, 201, t)
 }
 func (s *Server) handleAdminTargetQueue(w http.ResponseWriter, r *http.Request) {
+	if store.StrictTenantMode() {
+		writeError(w, 403, errors.New("use the automatic import API"))
+		return
+	}
 	id, _ := strconv.ParseUint(r.PathValue("target"), 10, 64)
 	job, err := s.store.QueueScrapeJob(r.Context(), uint(id))
 	if err != nil {
@@ -112,6 +127,223 @@ func (s *Server) handleAdminTargetQueue(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	writeJSON(w, 201, job)
+}
+
+// automaticImportTarget deliberately excludes worker configuration and cursors.
+type automaticImportTarget struct {
+	ID                uint   `json:"id"`
+	URL               string `json:"url"`
+	ExternalProductID string `json:"external_product_id"`
+	SellerArticle     string `json:"seller_article"`
+	Label             string `json:"label"`
+	Enabled           bool   `json:"enabled"`
+	LastStatus        string `json:"last_status"`
+}
+
+func automaticImportTargetJSON(t store.ScrapeTarget) automaticImportTarget {
+	return automaticImportTarget{t.ID, t.URL, t.ExternalProductID, t.SellerArticle, t.Label, t.Enabled, t.LastStatus}
+}
+
+func (s *Server) automaticImportTargets(r *http.Request) *gorm.DB {
+	return s.store.DB().WithContext(r.Context()).Model(&store.ScrapeTarget{}).
+		Select("scrape_targets.*").
+		Joins("JOIN source_connections ON source_connections.id = scrape_targets.source_connection_id AND source_connections.tenant_id = scrape_targets.tenant_id").
+		Where("scrape_targets.tenant_id = ? AND source_connections.method = ?", store.TenantIDFromCtx(r.Context()), marketplace.SourceMethodScraper)
+}
+
+func (s *Server) handleAutomaticImport(w http.ResponseWriter, r *http.Request) {
+	if _, ok := store.TenantIDFromCtxSafe(r.Context()); !ok {
+		writeError(w, 403, errors.New("tenant session required"))
+		return
+	}
+	policy, err := s.store.GetAutomaticImportPolicy(r.Context(), store.TenantIDFromCtx(r.Context()))
+	if err != nil {
+		writeError(w, 500, err)
+		return
+	}
+	count, err := s.store.CountEnabledScrapeTargets(r.Context(), store.TenantIDFromCtx(r.Context()))
+	if err != nil {
+		writeError(w, 500, err)
+		return
+	}
+	var targets []store.ScrapeTarget
+	if err := s.automaticImportTargets(r).Order("scrape_targets.id").Find(&targets).Error; err != nil {
+		writeError(w, 500, err)
+		return
+	}
+	rows := make([]automaticImportTarget, 0, len(targets))
+	for _, target := range targets {
+		rows = append(rows, automaticImportTargetJSON(target))
+	}
+	writeJSON(w, 200, map[string]any{"enabled": policy.Enabled, "limit": policy.Limit, "active_count": count, "targets": rows})
+}
+
+func (s *Server) automaticImportPolicy(w http.ResponseWriter, r *http.Request) (store.AutomaticImportPolicy, bool) {
+	if _, ok := store.TenantIDFromCtxSafe(r.Context()); !ok {
+		writeError(w, 403, errors.New("tenant session required"))
+		return store.AutomaticImportPolicy{}, false
+	}
+	policy, err := s.store.GetAutomaticImportPolicy(r.Context(), store.TenantIDFromCtx(r.Context()))
+	if err != nil {
+		writeError(w, 500, err)
+		return policy, false
+	}
+	if !policy.Enabled {
+		writeError(w, 403, errors.New("automatic import is disabled"))
+		return policy, false
+	}
+	return policy, true
+}
+
+func (s *Server) automaticImportCapacity(w http.ResponseWriter, r *http.Request, limit int, creating bool) bool {
+	count, err := s.store.CountEnabledScrapeTargets(r.Context(), store.TenantIDFromCtx(r.Context()))
+	if err != nil {
+		writeError(w, 500, err)
+		return false
+	}
+	if limit <= 0 || count > int64(limit) || (creating && count == int64(limit)) {
+		writeError(w, 409, errors.New("automatic import limit exhausted"))
+		return false
+	}
+	return true
+}
+
+func (s *Server) handleAutomaticImportCreate(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		URL           string `json:"url"`
+		Label         string `json:"label"`
+		SellerArticle string `json:"seller_article"`
+	}
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192))
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&input) != nil || decoder.Decode(new(any)) != io.EOF || len(input.Label) > 128 || len(input.SellerArticle) > 128 {
+		writeError(w, 400, errors.New("invalid automatic import target"))
+		return
+	}
+	canonical, productID, err := canonicalOzonTarget(input.URL)
+	if err != nil || len(canonical) > 2048 {
+		writeError(w, 400, errors.New("invalid Ozon product URL"))
+		return
+	}
+	s.automaticImportMu.Lock()
+	defer s.automaticImportMu.Unlock()
+	policy, ok := s.automaticImportPolicy(w, r)
+	if !ok {
+		return
+	}
+	var existing []store.ScrapeTarget
+	if err := s.automaticImportTargets(r).Where("scrape_targets.marketplace = ? AND scrape_targets.external_product_id = ?", "ozon", productID).Limit(2).Find(&existing).Error; err != nil {
+		writeError(w, 500, err)
+		return
+	}
+	if len(existing) > 1 {
+		writeError(w, 409, errors.New("ambiguous existing targets require operator resolution"))
+		return
+	}
+	if len(existing) == 1 {
+		writeJSON(w, 200, automaticImportTargetJSON(existing[0]))
+		return
+	}
+	if !s.automaticImportCapacity(w, r, policy.Limit, true) {
+		return
+	}
+	var connections []store.SourceConnection
+	if err := s.store.DB().WithContext(r.Context()).Where("tenant_id = ? AND kind = ? AND provider = ? AND method = ? AND status = ?", store.TenantIDFromCtx(r.Context()), "worker", "ozon", marketplace.SourceMethodScraper, "active").Limit(2).Find(&connections).Error; err != nil {
+		writeError(w, 500, err)
+		return
+	}
+	// There is no secure worker credential delivery/provisioning service here.
+	// Never create an unusable connection or borrow the operator's connection.
+	if len(connections) != 1 {
+		writeError(w, 503, errors.New("tenant scraper connection is not provisioned unambiguously"))
+		return
+	}
+	target := store.ScrapeTarget{SourceConnectionID: connections[0].ID, URL: canonical, Marketplace: "ozon", ExternalProductID: productID, Label: input.Label, SellerArticle: input.SellerArticle, Enabled: true}
+	if err := s.store.CreateScrapeTarget(r.Context(), &target); err != nil {
+		writeError(w, 500, err)
+		return
+	}
+	writeJSON(w, 201, automaticImportTargetJSON(target))
+}
+
+func (s *Server) automaticImportOwnedTarget(w http.ResponseWriter, r *http.Request) (store.ScrapeTarget, bool) {
+	if _, ok := store.TenantIDFromCtxSafe(r.Context()); !ok {
+		writeError(w, 403, errors.New("tenant session required"))
+		return store.ScrapeTarget{}, false
+	}
+	id, err := strconv.ParseUint(r.PathValue("id"), 10, 64)
+	if err != nil || id == 0 {
+		writeError(w, 404, errors.New("target not found"))
+		return store.ScrapeTarget{}, false
+	}
+	var target store.ScrapeTarget
+	err = s.automaticImportTargets(r).Where("scrape_targets.id = ?", id).First(&target).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		writeError(w, 404, errors.New("target not found"))
+		return target, false
+	}
+	if err != nil {
+		writeError(w, 500, err)
+		return target, false
+	}
+	return target, true
+}
+
+func (s *Server) handleAutomaticImportQueue(w http.ResponseWriter, r *http.Request) {
+	s.automaticImportMu.Lock()
+	defer s.automaticImportMu.Unlock()
+	target, ok := s.automaticImportOwnedTarget(w, r)
+	if !ok {
+		return
+	}
+	if !target.Enabled {
+		writeError(w, 404, errors.New("target not found"))
+		return
+	}
+	policy, ok := s.automaticImportPolicy(w, r)
+	if !ok || !s.automaticImportCapacity(w, r, policy.Limit, false) {
+		return
+	}
+	var connection store.SourceConnection
+	if err := s.store.DB().WithContext(r.Context()).Where("id = ? AND tenant_id = ? AND kind = ? AND method = ? AND status = ?", target.SourceConnectionID, store.TenantIDFromCtx(r.Context()), "worker", marketplace.SourceMethodScraper, "active").First(&connection).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			writeError(w, 503, errors.New("tenant scraper connection unavailable"))
+		} else {
+			writeError(w, 500, err)
+		}
+		return
+	}
+	var active int64
+	// Expired leases are still active: workers reclaim the same job/attempt.
+	if err := s.store.DB().WithContext(r.Context()).Model(&store.ScrapeJob{}).Where("tenant_id = ? AND target_id = ? AND status IN ?", store.TenantIDFromCtx(r.Context()), target.ID, []string{"queued", "leased"}).Count(&active).Error; err != nil {
+		writeError(w, 500, err)
+		return
+	}
+	if active != 0 {
+		writeError(w, 409, errors.New("target already has an active job"))
+		return
+	}
+	job, err := s.store.QueueScrapeJob(r.Context(), target.ID)
+	if err != nil {
+		writeError(w, 500, err)
+		return
+	}
+	writeJSON(w, 201, map[string]any{"id": job.ID, "target_id": job.TargetID, "status": job.Status})
+}
+
+func (s *Server) handleAutomaticImportDisable(w http.ResponseWriter, r *http.Request) {
+	s.automaticImportMu.Lock()
+	defer s.automaticImportMu.Unlock()
+	target, ok := s.automaticImportOwnedTarget(w, r)
+	if !ok {
+		return
+	}
+	if err := s.store.DB().WithContext(r.Context()).Model(&store.ScrapeTarget{}).Where("tenant_id = ? AND id = ?", store.TenantIDFromCtx(r.Context()), target.ID).Update("enabled", false).Error; err != nil {
+		writeError(w, 500, err)
+		return
+	}
+	target.Enabled = false
+	writeJSON(w, 200, automaticImportTargetJSON(target))
 }
 func bearer(r *http.Request) string {
 	v := strings.TrimSpace(r.Header.Get("Authorization"))
