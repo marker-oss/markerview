@@ -8,6 +8,7 @@ Implemented Task 2 only. No production data or worker credentials were created; 
 - `internal/server/server.go`: four session-protected routes and existing CSRF protection on all mutations.
 - `internal/server/automatic_import_test.go`: real database/request regression covering the client API and its authorization boundaries.
 - `internal/store/external_sources.go`: transactional target creation and queue helpers lock/update the tenant row before quota or active-job checks, making the critical check-and-write path database-serialized across Server instances.
+- `internal/store/automatic_import_test.go`: direct-helper regression proving policy disable/limit reductions are re-read inside mutation transactions.
 
 ## API contract
 - `GET /admin/api/automatic-import`: `{enabled, limit, active_count, targets}`. Each target has `id`, `url`, `external_product_id`, `seller_article`, `label`, `enabled`, and `last_status`.
@@ -38,5 +39,5 @@ The regression covers canonicalization, duplicate idempotency at full quota, fea
 
 ## Concerns / deployment limits
 - Automatic provisioning is intentionally unavailable; an operator must securely provision one tenant-owned Ozon scraper connection outside the ordinary-client API. Zero or multiple matching connections produce 503 for new targets.
-- Quota and duplicate-job checks now run inside GORM transactions after a tenant-row self-update. PostgreSQL obtains a row lock and SQLite serializes writers, so separate Server instances sharing one database cannot both consume the final slot or queue a second active job. The focused regression invokes concurrent queue requests.
+- Quota, enabled policy, and duplicate-job checks now run inside GORM transactions after reading current tenant policy and acquiring a tenant-row write/row lock. PostgreSQL obtains a row lock and SQLite serializes writers, so separate Server instances sharing one database cannot both consume the final slot or queue a second active job. The focused regression invokes concurrent queue requests and direct store helpers after policy reduction.
 - Disabling a target prevents new client queue requests but does not cancel previously queued/leased jobs; worker-route behavior is intentionally preserved.

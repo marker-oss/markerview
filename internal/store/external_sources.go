@@ -12,6 +12,7 @@ import (
 var (
 	ErrAutomaticImportLimit     = errors.New("automatic import limit exhausted")
 	ErrAutomaticImportActiveJob = errors.New("target already has an active job")
+	ErrAutomaticImportDisabled  = errors.New("automatic import is disabled")
 )
 
 type SourceConnection struct {
@@ -131,9 +132,16 @@ func (s *Store) CreateScrapeTarget(ctx context.Context, t *ScrapeTarget) error {
 // creating a target, so concurrent server instances cannot both consume the
 // final slot. The caller has already canonicalized and selected a tenant-owned
 // scraper connection; this method verifies both again in the transaction.
-func (s *Store) CreateAutomaticImportTarget(ctx context.Context, t *ScrapeTarget, limit int) error {
+func (s *Store) CreateAutomaticImportTarget(ctx context.Context, t *ScrapeTarget, _ int) error {
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		tenant := TenantIDFromCtx(ctx)
+		var policy Tenant
+		if err := tx.Select("automatic_import_enabled", "automatic_import_limit").First(&policy, tenant).Error; err != nil {
+			return err
+		}
+		if !policy.AutomaticImportEnabled {
+			return ErrAutomaticImportDisabled
+		}
 		if err := tx.Model(&Tenant{}).Where("id = ?", tenant).UpdateColumn("automatic_import_limit", gorm.Expr("automatic_import_limit")).Error; err != nil {
 			return err
 		}
@@ -152,7 +160,7 @@ func (s *Store) CreateAutomaticImportTarget(ctx context.Context, t *ScrapeTarget
 			*t = existing[0]
 			return nil
 		}
-		if limit <= 0 || count >= int64(limit) {
+		if policy.AutomaticImportLimit <= 0 || count >= int64(policy.AutomaticImportLimit) {
 			return ErrAutomaticImportLimit
 		}
 		return s.createScrapeTargetDB(tx, ctx, t)
@@ -166,12 +174,26 @@ func (s *Store) QueueAutomaticImportJob(ctx context.Context, targetID uint) (Scr
 	var job ScrapeJob
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		tenant := TenantIDFromCtx(ctx)
+		var policy Tenant
+		if err := tx.Select("automatic_import_enabled", "automatic_import_limit").First(&policy, tenant).Error; err != nil {
+			return err
+		}
+		if !policy.AutomaticImportEnabled {
+			return ErrAutomaticImportDisabled
+		}
 		if err := tx.Model(&Tenant{}).Where("id = ?", tenant).UpdateColumn("automatic_import_limit", gorm.Expr("automatic_import_limit")).Error; err != nil {
 			return err
 		}
 		var target ScrapeTarget
 		if err := tx.Where("id = ? AND tenant_id = ? AND enabled = ?", targetID, tenant, true).First(&target).Error; err != nil {
 			return err
+		}
+		var count int64
+		if err := tx.Model(&ScrapeTarget{}).Joins("JOIN source_connections ON source_connections.id = scrape_targets.source_connection_id AND source_connections.tenant_id = scrape_targets.tenant_id").Where("scrape_targets.tenant_id = ? AND scrape_targets.enabled = ? AND source_connections.method = ?", tenant, true, "scraper").Count(&count).Error; err != nil {
+			return err
+		}
+		if policy.AutomaticImportLimit <= 0 || count > int64(policy.AutomaticImportLimit) {
+			return ErrAutomaticImportLimit
 		}
 		var active int64
 		if err := tx.Model(&ScrapeJob{}).Where("tenant_id = ? AND target_id = ? AND status IN ?", tenant, target.ID, []string{"queued", "leased"}).Count(&active).Error; err != nil {
@@ -185,7 +207,6 @@ func (s *Store) QueueAutomaticImportJob(ctx context.Context, targetID uint) (Scr
 	})
 	return job, err
 }
-
 func (s *Store) QueueScrapeJob(ctx context.Context, targetID uint) (ScrapeJob, error) {
 	tenant := TenantIDFromCtx(ctx)
 	var t ScrapeTarget
@@ -195,6 +216,7 @@ func (s *Store) QueueScrapeJob(ctx context.Context, targetID uint) (ScrapeJob, e
 	j := ScrapeJob{TenantID: tenant, SourceConnectionID: t.SourceConnectionID, TargetID: t.ID, CursorBefore: t.LastCursor}
 	return j, s.db.WithContext(ctx).Create(&j).Error
 }
+
 func (s *Store) QueuedJobs(ctx context.Context, connectionID uint) ([]ScrapeJob, error) {
 	var jobs []ScrapeJob
 	expired := "lease_until < ?"

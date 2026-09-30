@@ -225,8 +225,13 @@ func (s *Server) handleAutomaticImportCreate(w http.ResponseWriter, r *http.Requ
 		writeError(w, 400, errors.New("invalid Ozon product URL"))
 		return
 	}
-	policy, ok := s.automaticImportPolicy(w, r)
-	if !ok {
+	policy, err := s.store.GetAutomaticImportPolicy(r.Context(), store.TenantIDFromCtx(r.Context()))
+	if err != nil {
+		writeError(w, 500, err)
+		return
+	}
+	if !policy.Enabled {
+		writeError(w, 403, store.ErrAutomaticImportDisabled)
 		return
 	}
 	var existing []store.ScrapeTarget
@@ -254,9 +259,13 @@ func (s *Server) handleAutomaticImportCreate(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	target := store.ScrapeTarget{SourceConnectionID: connections[0].ID, URL: canonical, Marketplace: "ozon", ExternalProductID: productID, Label: input.Label, SellerArticle: input.SellerArticle, Enabled: true}
-	if err := s.store.CreateAutomaticImportTarget(r.Context(), &target, policy.Limit); err != nil {
+	if err := s.store.CreateAutomaticImportTarget(r.Context(), &target, 0); err != nil {
 		if errors.Is(err, store.ErrAutomaticImportLimit) {
 			writeError(w, 409, err)
+			return
+		}
+		if errors.Is(err, store.ErrAutomaticImportDisabled) {
+			writeError(w, 403, err)
 			return
 		}
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -293,16 +302,21 @@ func (s *Server) automaticImportOwnedTarget(w http.ResponseWriter, r *http.Reque
 }
 
 func (s *Server) handleAutomaticImportQueue(w http.ResponseWriter, r *http.Request) {
+	policy, err := s.store.GetAutomaticImportPolicy(r.Context(), store.TenantIDFromCtx(r.Context()))
+	if err != nil {
+		writeError(w, 500, err)
+		return
+	}
+	if !policy.Enabled {
+		writeError(w, 403, store.ErrAutomaticImportDisabled)
+		return
+	}
 	target, ok := s.automaticImportOwnedTarget(w, r)
 	if !ok {
 		return
 	}
 	if !target.Enabled {
 		writeError(w, 404, errors.New("target not found"))
-		return
-	}
-	policy, ok := s.automaticImportPolicy(w, r)
-	if !ok || !s.automaticImportCapacity(w, r, policy.Limit, false) {
 		return
 	}
 	var connection store.SourceConnection
@@ -316,8 +330,12 @@ func (s *Server) handleAutomaticImportQueue(w http.ResponseWriter, r *http.Reque
 	}
 	job, err := s.store.QueueAutomaticImportJob(r.Context(), target.ID)
 	if err != nil {
-		if errors.Is(err, store.ErrAutomaticImportActiveJob) {
+		if errors.Is(err, store.ErrAutomaticImportActiveJob) || errors.Is(err, store.ErrAutomaticImportLimit) {
 			writeError(w, 409, err)
+			return
+		}
+		if errors.Is(err, store.ErrAutomaticImportDisabled) {
+			writeError(w, 403, err)
 			return
 		}
 		if errors.Is(err, gorm.ErrRecordNotFound) {

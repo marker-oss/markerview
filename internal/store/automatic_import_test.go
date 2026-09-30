@@ -123,3 +123,40 @@ func TestCountEnabledScrapeTargetsIsTenantAndScraperScoped(t *testing.T) {
 		t.Fatalf("tenant B count = %d, want 1", count)
 	}
 }
+
+func TestAutomaticImportHelpersRecheckCurrentPolicy(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	tenant, err := s.CreateTenant(ctx, "automatic-import-helper", "https://helper.example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner := WithTenant(ctx, tenant.ID)
+	if err := s.SetAutomaticImportPolicy(ctx, tenant.ID, true, 2); err != nil {
+		t.Fatal(err)
+	}
+	conn := SourceConnection{Kind: "worker", Provider: "ozon", Method: "scraper", Name: "helper", Status: "active", TokenHash: HashSourceToken("helper")}
+	if err := s.CreateSourceConnection(owner, &conn); err != nil {
+		t.Fatal(err)
+	}
+	target := ScrapeTarget{SourceConnectionID: conn.ID, URL: "https://www.ozon.ru/product/helper-1/", Marketplace: "ozon", ExternalProductID: "1", Enabled: true}
+	if err := s.CreateAutomaticImportTarget(owner, &target, 999); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetAutomaticImportPolicy(ctx, tenant.ID, false, 2); err != nil {
+		t.Fatal(err)
+	}
+	second := ScrapeTarget{SourceConnectionID: conn.ID, URL: "https://www.ozon.ru/product/helper-2/", Marketplace: "ozon", ExternalProductID: "2", Enabled: true}
+	if !errors.Is(s.CreateAutomaticImportTarget(owner, &second, 999), ErrAutomaticImportDisabled) {
+		t.Fatal("helper ignored disabled policy")
+	}
+	if !errors.Is(func() error { _, err := s.QueueAutomaticImportJob(owner, target.ID); return err }(), ErrAutomaticImportDisabled) {
+		t.Fatal("queue helper ignored disabled policy")
+	}
+	if err := s.SetAutomaticImportPolicy(ctx, tenant.ID, true, 0); err != nil {
+		t.Fatal(err)
+	}
+	if !errors.Is(func() error { _, err := s.QueueAutomaticImportJob(owner, target.ID); return err }(), ErrAutomaticImportLimit) {
+		t.Fatal("queue helper ignored reduced limit")
+	}
+}
