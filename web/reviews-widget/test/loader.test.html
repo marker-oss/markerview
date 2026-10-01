@@ -114,20 +114,26 @@
     '<div>"sku":"1523"</div>';
   eq("extract current jsonld product sku", I.extractArticleFromDocument(testDoc), "3508-1");
 
-  var ld = I.buildJsonLd(
-    {
-      aggregate: { count: 2, ratingCount: 2, ratingAvg: 4.5 },
-      reviews: [
-        { rating: 5, authorName: "A", createdAt: "2026-05-01T00:00:00Z", text: "t1" },
-        { rating: 4, authorName: "B", createdAt: "2026-04-01T00:00:00Z", text: "t2" },
-      ],
-    },
-    10,
-  );
-  eq("jsonld ratingValue", ld.ratingValue, 4.5);
-  eq("jsonld reviewCount", ld.reviewCount, 2);
-  eq("jsonld reviews len", ld.review.length, 2);
-  eq("jsonld null when empty", I.buildJsonLd({ aggregate: { count: 0, ratingCount: 0, ratingAvg: 0 } }, 10), null);
+  var site = function (rating, text) {
+    return { marketplace: "site", rating: rating, authorName: "A", createdAt: "2026-05-01T00:00:00Z", text: text };
+  };
+  var mixed = {
+    reviews: [site(5, "t1"), site(4, "t2"), { marketplace: "wb", rating: 1, text: "mp" }],
+  };
+  var ld = I.buildJsonLd(mixed, 10, { "@type": "Product", name: "Свитшот", sku: "3508-1", url: "/p" }, "title");
+  eq("jsonld is Product", ld["@type"], "Product");
+  eq("jsonld adopts page product", [ld.name, ld.sku, ld.url], ["Свитшот", "3508-1", "/p"]);
+  eq("jsonld rates own reviews only", [ld.aggregateRating.ratingValue, ld.aggregateRating.ratingCount, ld.review.length], [4.5, 2, 2]);
+  eq("jsonld caps reviews", I.buildJsonLd(mixed, 1, null, "title").review.length, 1);
+  eq("jsonld falls back to title", I.buildJsonLd(mixed, 10, null, "title").name, "title");
+  eq("jsonld null for marketplace-only", I.buildJsonLd({ reviews: [{ marketplace: "wb", rating: 5 }] }, 10, null, "t"), null);
+  eq("jsonld null when page product rated", I.buildJsonLd(mixed, 10, { "@type": "Product", name: "x", aggregateRating: {} }, "t"), null);
+  eq("jsonld null without name", I.buildJsonLd(mixed, 10, null, ""), null);
+
+  var graphDoc = document.implementation.createHTMLDocument("graph");
+  graphDoc.body.innerHTML =
+    '<script type="application/ld+json">{"@graph":[{"@type":"BreadcrumbList"},{"@type":["Product"],"name":"G"}]}<\/script>';
+  eq("page product from @graph", I.pageProductJSONLD(graphDoc).name, "G");
 
   eq("proxy wraps url",
      ReviewsWidget.mediaProxyURL("https://cdn.test/a.jpg", "https://rev.test"),

@@ -307,17 +307,74 @@
     return "";
   }
 
-  function buildJsonLd(bundle, maxReviews) {
-    if (!bundle || !bundle.aggregate || bundle.aggregate.ratingCount < 1) {
+  function findProductJSONLD(value) {
+    if (!value) {
+      return null;
+    }
+    if (Array.isArray(value)) {
+      for (var i = 0; i < value.length; i++) {
+        var found = findProductJSONLD(value[i]);
+        if (found) {
+          return found;
+        }
+      }
+      return null;
+    }
+    if (value["@graph"]) {
+      return findProductJSONLD(value["@graph"]);
+    }
+    return isProductJSONLD(value) ? value : null;
+  }
+
+  function pageProductJSONLD(doc) {
+    var scripts = doc.querySelectorAll('script[type="application/ld+json"]');
+    for (var i = 0; i < scripts.length; i++) {
+      if (scripts[i].id === CFG.hostId + "-jsonld") {
+        continue;
+      }
+      try {
+        var product = findProductJSONLD(JSON.parse(scripts[i].textContent || ""));
+        if (product) {
+          return product;
+        }
+      } catch (_error) {
+        // Ignore unrelated or malformed JSON-LD blocks.
+      }
+    }
+    return null;
+  }
+
+  // Google forbids marking up reviews aggregated from other sites, so only
+  // reviews left on this site (marketplace "site") go into structured data.
+  // A page Product that already carries ratings (e.g. Yandex Kit with Market
+  // reviews) wins: emitting a second rating would conflict with it.
+  function buildJsonLd(bundle, maxReviews, pageProduct, title) {
+    if (pageProduct && (pageProduct.aggregateRating || pageProduct.review)) {
+      return null;
+    }
+    var own = ((bundle && bundle.reviews) || []).filter(function (review) {
+      return review.marketplace === "site" && review.rating != null;
+    });
+    if (!own.length) {
       return null;
     }
 
-    var reviews = (bundle.reviews || [])
-      .filter(function (review) {
-        return review.rating != null;
-      })
-      .slice(0, maxReviews)
-      .map(function (review) {
+    var sum = 0;
+    own.forEach(function (review) {
+      sum += review.rating;
+    });
+    var product = {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      name: (pageProduct && pageProduct.name) || title || "",
+      aggregateRating: {
+        "@type": "AggregateRating",
+        ratingValue: Math.round((sum / own.length) * 10) / 10,
+        ratingCount: own.length,
+        bestRating: 5,
+        worstRating: 1,
+      },
+      review: own.slice(0, maxReviews).map(function (review) {
         return {
           "@type": "Review",
           author: { "@type": "Person", name: review.authorName || "Покупатель" },
@@ -325,18 +382,16 @@
           reviewRating: { "@type": "Rating", ratingValue: review.rating, bestRating: 5, worstRating: 1 },
           reviewBody: review.text || "",
         };
-      });
-
-    return {
-      "@context": "https://schema.org",
-      "@type": "AggregateRating",
-      ratingValue: bundle.aggregate.ratingAvg,
-      reviewCount: bundle.aggregate.count,
-      ratingCount: bundle.aggregate.ratingCount,
-      bestRating: 5,
-      worstRating: 1,
-      review: reviews,
+      }),
     };
+    if (pageProduct) {
+      ["@id", "url", "sku"].forEach(function (key) {
+        if (pageProduct[key]) {
+          product[key] = pageProduct[key];
+        }
+      });
+    }
+    return product.name ? product : null;
   }
 
   window.__reviewsEmbedInternals = {
@@ -354,6 +409,7 @@
     extractArticleFromDocument: extractArticleFromDocument,
     skuFromRequestContext: skuFromRequestContext,
     buildJsonLd: buildJsonLd,
+    pageProductJSONLD: pageProductJSONLD,
     loadWidgetConfig: loadWidgetConfig,
     findCustomAnchor: findCustomAnchor,
     findAnchor: findAnchor,
@@ -626,7 +682,7 @@
   }
 
   function injectJsonLd(bundle) {
-    var data = buildJsonLd(bundle, CFG.maxJsonLdReviews);
+    var data = buildJsonLd(bundle, CFG.maxJsonLdReviews, pageProductJSONLD(document), document.title);
     if (!data) {
       return;
     }
@@ -766,7 +822,7 @@
       fullFeedOffset: 0,
       fullFeedLimit: 24,
     });
-    if (reviews.length) {
+    if (reviews.length && resolvedContext === "product") {
       injectJsonLd(bundle);
     }
     currentArticle = normalizedArticle;

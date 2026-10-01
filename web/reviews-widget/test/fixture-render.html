@@ -73,8 +73,8 @@
       host &&
       (!noShadow || host.classList.contains("reviews-widget")) &&
       card &&
-      jsonLd &&
-      jsonLd.textContent.indexOf("AggregateRating") > -1 &&
+      // sample data holds marketplace reviews only: no structured data allowed
+      !jsonLd &&
       productMain &&
       productMain.nextElementSibling === host;
 
