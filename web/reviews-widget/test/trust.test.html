@@ -68,6 +68,15 @@
     assert(parseInt(distribution.querySelector('[data-rating="4"] .rw-dist-count').textContent,10)===1, 'four-star count does not match observed records');
     assert(root.textContent.includes('среди загруженных')||root.textContent.includes('По загруженным'), 'partial statistic lacks qualifier');
   });
+  await check('header shows store-wide server counts while feed is partial and filtered', async()=>{
+    const root=mount({}, {reviews:data.slice(0,2),aggregate:{totalReviews:19,averageRating:4.2,ratingCounts:[1,1,2,5,10]},fullFeedSource:'/__not_requested',fullFeedOffset:2});
+    const header=()=>root.querySelector('[data-role="summary"]').textContent;
+    assert(/Всего\s+19/.test(header()), 'header shows loaded count instead of store total: '+header());
+    const five=()=>root.querySelector('[data-role="distwrap"] [data-rating="5"] .rw-dist-count').textContent.trim();
+    assert(five()==='10', 'five-star count is not store-wide: '+five());
+    root.querySelector('[data-role="distwrap"] [data-rating="3"]').click();
+    assert(/Всего\s+19/.test(header())&&five()==='10', 'buyer filter changed header totals');
+  });
   await check('completed remote pool replaces stale seed totals and survives modal close', async()=>{
     const nativeFetch=window.fetch;
     window.fetch=(url,options)=>{

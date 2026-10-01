@@ -1127,8 +1127,9 @@
     view.controls.forEach(({ node, text, hidden, disabled }) => { node.textContent = text; node.hidden = hidden; if (disabled != null) node.disabled = disabled; });
     view.nodes.forEach(({ node, marker, hidden }) => { marker.replaceWith(node); node.hidden = hidden; });
     root.classList.remove("rw-reviews-open");
-    renderSummary(root, eligible, aggregate, state);
-    renderDistribution(root, aggregate, state);
+    const header = headerAggregate(aggregate, state);
+    renderSummary(root, eligible, header, state);
+    renderDistribution(root, header, state);
     renderResults(root, aggregate, state.filteredReviews.length, state);
     renderListStatus(root, aggregate, state.filteredReviews.length, state);
     const list = root.querySelector('[data-role="list"]');
@@ -1284,8 +1285,9 @@
     const aggregate = summaryAggregate(eligible, state);
     let filtered = filterReviewPool(state, eligible);
     if (!state.reviewsView) {
-      renderSummary(root, eligible, aggregate, state);
-      renderDistribution(root, aggregate, state);
+      const header = headerAggregate(aggregate, state);
+      renderSummary(root, eligible, header, state);
+      renderDistribution(root, header, state);
     }
     renderResults(root, aggregate, filtered.length, state);
 
@@ -2976,7 +2978,9 @@
     const ratingCount = Number(aggregate.ratingCount ?? totalReviews);
     const averageRating = Number(aggregate.averageRating ?? aggregate.ratingAvg);
     const recommendPercent = aggregate.recommendPercent == null ? NaN : Number(aggregate.recommendPercent);
+    const ratingCounts = Array.isArray(aggregate.ratingCounts) && aggregate.ratingCounts.length === 5 && aggregate.ratingCounts.every((n) => Number.isInteger(n) && n >= 0) ? aggregate.ratingCounts.slice() : null;
     return {
+      ratingCounts,
       totalReviews: Number.isFinite(totalReviews) && totalReviews >= 0 ? totalReviews : null,
       ratingCount: Number.isFinite(ratingCount) && ratingCount >= 0 ? ratingCount : null,
       averageRating: Number.isFinite(averageRating) && averageRating > 0 && averageRating <= 5 ? averageRating : null,
@@ -3188,6 +3192,24 @@
 
   function summaryAggregate(reviews, state) {
     return { ...aggregateFromReviews(reviews), complete: reviewPoolComplete(state) };
+  }
+
+  // Шапка показывает статистику всей базы с сервера (ratingCounts — точные
+  // счётчики по звёздам), а не загруженную/отфильтрованную часть ленты.
+  function headerAggregate(local, state) {
+    const server = state.aggregate;
+    if (!server || !server.ratingCounts || server.totalReviews == null) return local;
+    const distribution = [0, ...server.ratingCounts];
+    const ratingCount = server.ratingCounts.reduce((sum, count) => sum + count, 0);
+    const sum = server.ratingCounts.reduce((total, count, index) => total + count * (index + 1), 0);
+    return {
+      totalReviews: server.totalReviews,
+      ratingCount,
+      averageRating: server.averageRating ?? (ratingCount ? sum / ratingCount : null),
+      recommendPercent: ratingCount ? (distribution[4] + distribution[5]) / ratingCount * 100 : null,
+      distribution,
+      complete: true,
+    };
   }
 
   function aggregateFromReviews(reviews) {

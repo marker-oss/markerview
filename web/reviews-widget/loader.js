@@ -717,6 +717,8 @@
       count: numberOrFallback(aggregate.count, numberOrFallback(aggregate.totalReviews, fallback.count)),
       ratingCount: numberOrFallback(aggregate.ratingCount, fallback.ratingCount),
       ratingAvg: numberOrFallback(aggregate.ratingAvg, numberOrFallback(aggregate.averageRating, fallback.ratingAvg)),
+      recommendPercent: aggregate.recommendPercent,
+      ratingCounts: aggregate.ratingCounts,
     };
   }
 

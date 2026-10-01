@@ -666,7 +666,7 @@
           ${viewerMin ? "" : `<div class="rw-media-who" data-role="viewer-who"><span class="rw-avatar rw-who-avatar" data-role="viewer-avatar"></span><span class="rw-who-line"><b data-role="viewer-name"></b><span class="rw-when" data-role="viewer-when"></span></span><span class="rw-stars rw-who-stars" data-role="viewer-stars"></span></div>`}
           <span class="rw-media-tools">
             ${viewerCfg.showCounter ? `<span class="rw-media-counter" data-role="viewer-count"></span>` : ""}
-            ${viewerCfg.showOriginal ? `<a class="rw-media-original" data-role="viewer-original" href="#" target="_blank" rel="noreferrer">Открыть оригинал</a>` : ""}
+            ${viewerCfg.showOriginal ? `<a class="rw-media-original" data-role="viewer-original" href="#" target="_blank" rel="noreferrer noopener">Открыть оригинал</a>` : ""}
           </span>
           <button class="rw-media-close" type="button" data-role="viewer-close" aria-label="Закрыть просмотр">×</button>
         </div>
@@ -710,13 +710,17 @@
       <div class="rw-qa-submit" data-role="qa-submit"></div>
     `;
 
+    const attribution = document.createElement("div");
+    attribution.className = "rw-attribution";
+    attribution.innerHTML = 'создано при помощи <a href="https://markerview.ru/" target="_blank" rel="noopener noreferrer">markerview</a>';
+
     // Header first, then the flat section children of the root in config order.
     fragment.appendChild(header);
     const bySection = { summary: overview, player, media, filters: filterBar, list: listWrap, form: submitForm };
     for (const id of config.layout.sections) {
       fragment.appendChild(bySection[id]);
     }
-    fragment.append(questionsPanel, reviewsDialog, viewer, formModal);
+    fragment.append(questionsPanel, attribution, reviewsDialog, viewer, formModal);
     return fragment;
   }
 
@@ -1027,6 +1031,21 @@
       if (state.config.layout.player.autoAdvance.pauseOnHover) { state.viewerHovered = true; clearViewerTimer(root, state); }
     });
     viewer.addEventListener("mouseleave", () => { state.viewerHovered = false; scheduleViewerTimer(root, state); });
+    const onYandexMessage = (event) => {
+      const frame = viewer.querySelector('[data-role="viewer-stage"] iframe[data-yandex-player]');
+      if (state.destroyed || !viewer.open || !frame || event.origin !== "https://runtime.strm.yandex.ru" || event.source !== frame.contentWindow) return;
+      let data = event.data;
+      if (typeof data === "string") {
+        try { data = JSON.parse(data); } catch { return; }
+      }
+      if (data && data.event === "inited") {
+        frame.contentWindow.postMessage({ method: "play" }, "https://runtime.strm.yandex.ru");
+      }
+      if (data && data.event === "ended" && state.config.layout.player.autoAdvance.enabled && viewer.__items.length > 1) {
+        shiftMediaViewer(root, 1, state);
+      }
+    };
+    window.addEventListener("message", onYandexMessage, { signal: state.controller.signal });
     const modal = root.querySelector('[data-role="form-modal"]');
     modal.addEventListener("cancel", (event) => { event.preventDefault(); closeFormModal(root, state); });
     modal.addEventListener("click", (event) => { if (event.target === modal) closeFormModal(root, state); });
@@ -1108,8 +1127,9 @@
     view.controls.forEach(({ node, text, hidden, disabled }) => { node.textContent = text; node.hidden = hidden; if (disabled != null) node.disabled = disabled; });
     view.nodes.forEach(({ node, marker, hidden }) => { marker.replaceWith(node); node.hidden = hidden; });
     root.classList.remove("rw-reviews-open");
-    renderSummary(root, eligible, aggregate, state);
-    renderDistribution(root, aggregate, state);
+    const header = headerAggregate(aggregate, state);
+    renderSummary(root, eligible, header, state);
+    renderDistribution(root, header, state);
     renderResults(root, aggregate, state.filteredReviews.length, state);
     renderListStatus(root, aggregate, state.filteredReviews.length, state);
     const list = root.querySelector('[data-role="list"]');
@@ -1265,8 +1285,9 @@
     const aggregate = summaryAggregate(eligible, state);
     let filtered = filterReviewPool(state, eligible);
     if (!state.reviewsView) {
-      renderSummary(root, eligible, aggregate, state);
-      renderDistribution(root, aggregate, state);
+      const header = headerAggregate(aggregate, state);
+      renderSummary(root, eligible, header, state);
+      renderDistribution(root, header, state);
     }
     renderResults(root, aggregate, filtered.length, state);
 
@@ -1900,6 +1921,15 @@
     } catch { return ""; }
   }
 
+  function isYandexPlayerURL(value) {
+    try {
+      const url = new URL(value);
+      return url.protocol === "https:" && url.hostname === "runtime.strm.yandex.ru" && !url.port && !url.username && !url.password && url.pathname.startsWith("/player/");
+    } catch {
+      return false;
+    }
+  }
+
 
   function renderCustomTags(review, config) {
     const fields = (config && config.customFields) || [];
@@ -2039,7 +2069,7 @@
         `data-media-review-text="${escapeAttribute(item.reviewText || "")}"`,
       ] : [],
       'target="_blank"',
-      'rel="noreferrer"',
+      'rel="noreferrer noopener"',
     ].flat().filter(Boolean).join(" ");
   }
 
@@ -2111,6 +2141,7 @@
   function updateViewerPlay(root, state) {
     const button = root.querySelector('[data-role="viewer-play"]');
     if (button) {
+      button.hidden = state.viewerPlaying;
       button.setAttribute("aria-label", state.viewerPlaying ? "Пауза" : "Воспроизвести");
       button.classList.toggle("is-paused", !state.viewerPlaying);
     }
@@ -2176,7 +2207,8 @@
     const playBtn = viewer.querySelector('[data-role="viewer-play"]');
     const progress = viewer.querySelector('[data-role="viewer-progress"]');
     const cfg = root.__reviewsWidgetConfig || {};
-    const canPlayVideo = item.kind === "video" && !item.embedProvider && !isLikelyImageURL(item.url);
+    const yandexPlayer = item.kind === "video" && isYandexPlayerURL(item.url);
+    const canPlayVideo = item.kind === "video" && !yandexPlayer && !item.embedProvider && !isLikelyImageURL(item.url);
     const canShowImage = item.kind !== "video" || item.previewUrl || isLikelyImageURL(item.url);
     const rawViewerSrc = item.kind === "video" ? item.previewUrl || item.url : item.url || item.previewUrl;
     const viewerSrc = item.kind === "video" ? rawViewerSrc : mediaProxyURL(rawViewerSrc, root.__reviewsProxyBase);
@@ -2206,12 +2238,14 @@
     const viewerVideoAttrs = autoPlay ? " autoplay muted" : "";
     const panel = productPanelState(root, cfg) ? renderProductPanel(item) : "";
     const embedSrc = embedFrameURL(item);
-    const mediaHTML = embedSrc
-      ? `<iframe class="rw-media-viewer-embed" src="${escapeAttribute(embedSrc)}" title="${escapeAttribute(captionText)}" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" allowfullscreen></iframe>`
+    const mediaHTML = yandexPlayer
+      ? `<iframe class="rw-media-viewer-embed" data-yandex-player src="${escapeAttribute((() => { const url = new URL(item.url); url.searchParams.set("autoplay", "1"); url.searchParams.set("mute", "1"); return url.href; })())}" title="${escapeAttribute(captionText)}" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>`
+      : embedSrc
+        ? `<iframe class="rw-media-viewer-embed" src="${escapeAttribute(embedSrc)}" title="${escapeAttribute(captionText)}" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" allowfullscreen></iframe>`
       : canPlayVideo
         ? `<video class="rw-media-viewer-video" src="${escapeAttribute(item.url)}"${item.previewUrl ? ` poster="${escapeAttribute(item.previewUrl)}"` : ""} controls playsinline${viewerVideoAttrs}></video>`
         : canShowImage ? `<img class="rw-media-viewer-image" src="${escapeAttribute(viewerSrc)}" alt="${escapeAttribute(captionText)}" />`
-          : safeSourceURL(item.url) ? `<a class="rw-media-viewer-placeholder" href="${escapeAttribute(safeSourceURL(item.url))}" target="_blank" rel="noreferrer">Открыть медиа</a>` : `<span class="rw-media-viewer-placeholder">Медиа недоступно</span>`;
+          : safeSourceURL(item.url) ? `<a class="rw-media-viewer-placeholder" href="${escapeAttribute(safeSourceURL(item.url))}" target="_blank" rel="noreferrer noopener">Открыть медиа</a>` : `<span class="rw-media-viewer-placeholder">Медиа недоступно</span>`;
     stage.innerHTML = panel ? `<div class="rw-media-viewer-with-panel"><div class="rw-product-panel-stage">${mediaHTML}</div>${panel}</div>` : mediaHTML;
     const video = stage.querySelector("video");
     if (video) {
@@ -2944,7 +2978,9 @@
     const ratingCount = Number(aggregate.ratingCount ?? totalReviews);
     const averageRating = Number(aggregate.averageRating ?? aggregate.ratingAvg);
     const recommendPercent = aggregate.recommendPercent == null ? NaN : Number(aggregate.recommendPercent);
+    const ratingCounts = Array.isArray(aggregate.ratingCounts) && aggregate.ratingCounts.length === 5 && aggregate.ratingCounts.every((n) => Number.isInteger(n) && n >= 0) ? aggregate.ratingCounts.slice() : null;
     return {
+      ratingCounts,
       totalReviews: Number.isFinite(totalReviews) && totalReviews >= 0 ? totalReviews : null,
       ratingCount: Number.isFinite(ratingCount) && ratingCount >= 0 ? ratingCount : null,
       averageRating: Number.isFinite(averageRating) && averageRating > 0 && averageRating <= 5 ? averageRating : null,
@@ -3156,6 +3192,24 @@
 
   function summaryAggregate(reviews, state) {
     return { ...aggregateFromReviews(reviews), complete: reviewPoolComplete(state) };
+  }
+
+  // Шапка показывает статистику всей базы с сервера (ratingCounts — точные
+  // счётчики по звёздам), а не загруженную/отфильтрованную часть ленты.
+  function headerAggregate(local, state) {
+    const server = state.aggregate;
+    if (!server || !server.ratingCounts || server.totalReviews == null) return local;
+    const distribution = [0, ...server.ratingCounts];
+    const ratingCount = server.ratingCounts.reduce((sum, count) => sum + count, 0);
+    const sum = server.ratingCounts.reduce((total, count, index) => total + count * (index + 1), 0);
+    return {
+      totalReviews: server.totalReviews,
+      ratingCount,
+      averageRating: server.averageRating ?? (ratingCount ? sum / ratingCount : null),
+      recommendPercent: ratingCount ? (distribution[4] + distribution[5]) / ratingCount * 100 : null,
+      distribution,
+      complete: true,
+    };
   }
 
   function aggregateFromReviews(reviews) {

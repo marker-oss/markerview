@@ -21,6 +21,7 @@ type Aggregate struct {
 	RatingCount      int     `json:"ratingCount"`
 	RatingAvg        float64 `json:"ratingAvg"`
 	RecommendPercent int     `json:"recommendPercent"` // share of rated reviews with rating >= 4, 0-100
+	RatingCounts     [5]int  `json:"ratingCounts"`     // index 0 = 1 star
 }
 
 type Bundle struct {
@@ -79,20 +80,23 @@ func BuildBundles(reviews []store.Review, mapper reviewjson.Mapper, pinsByArticl
 			return bundle.Reviews[i].CreatedAt.After(bundle.Reviews[j].CreatedAt)
 		})
 		var sum, ratingCount, recommended int
+		var ratingCounts [5]int
 		for _, review := range bundle.Reviews {
-			if review.Rating == nil {
+			if review.Rating == nil || *review.Rating < 1 || *review.Rating > 5 {
 				continue
 			}
 			sum += *review.Rating
 			ratingCount++
+			ratingCounts[*review.Rating-1]++
 			if *review.Rating >= 4 {
 				recommended++
 			}
 		}
 
 		bundle.Aggregate = Aggregate{
-			Count:       len(bundle.Reviews),
-			RatingCount: ratingCount,
+			Count:        len(bundle.Reviews),
+			RatingCount:  ratingCount,
+			RatingCounts: ratingCounts,
 		}
 		if ratingCount > 0 {
 			bundle.Aggregate.RatingAvg = roundTenth(float64(sum) / float64(ratingCount))
