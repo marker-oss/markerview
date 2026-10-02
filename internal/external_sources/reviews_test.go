@@ -33,6 +33,22 @@ func importTestReview() marketplace.Review {
 	return marketplace.Review{ExternalProductID: "sku-1", AuthorName: "Alice", Text: "Отличный товар", CreatedAtMP: time.Date(2026, 9, 29, 10, 0, 0, 0, time.UTC)}
 }
 
+func TestServiceAcceptsRatingOnlyReviewAndRejectsEmpty(t *testing.T) {
+	service, _ := importTestService(t)
+	source := SourceContext{Marketplace: "wb", Method: marketplace.SourceMethodAPI}
+	five := 5
+	ratingOnly := importTestReview()
+	ratingOnly.ExternalReviewID, ratingOnly.Text, ratingOnly.Rating = "wb-1", "", &five
+	if _, err := service.ImportOne(context.Background(), source, ratingOnly); err != nil {
+		t.Fatalf("rating-only review rejected: %v", err)
+	}
+	empty := importTestReview()
+	empty.ExternalReviewID, empty.Text = "wb-2", " "
+	if _, err := service.ImportOne(context.Background(), source, empty); err == nil {
+		t.Fatal("review without text and rating accepted")
+	}
+}
+
 func TestServiceScopesProviderIdentityByConnectionAndTenant(t *testing.T) {
 	service, db := importTestService(t)
 	input := InputReview{Review: importTestReview(), ProviderRecordID: "shared-provider-id"}

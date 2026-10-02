@@ -108,8 +108,9 @@ func prepare(source SourceContext, input InputReview) (marketplace.Review, error
 	if source.SellerArticle != "" {
 		r.SellerArticle = source.SellerArticle
 	}
-	if strings.TrimSpace(r.Text) == "" {
-		return marketplace.Review{}, fmt.Errorf("text is required")
+	// Marketplaces publish rating-only reviews; only a review with neither is empty.
+	if strings.TrimSpace(r.Text) == "" && r.Rating == nil {
+		return marketplace.Review{}, fmt.Errorf("text or rating is required")
 	}
 	if r.CreatedAtMP.IsZero() {
 		return marketplace.Review{}, fmt.Errorf("created_at is required")
